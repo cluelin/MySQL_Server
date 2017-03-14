@@ -18,7 +18,7 @@ public class ServerMain implements Runnable {
 
 	// mySQL사용하기위한 준비.
 	static final String JDBC_DRIVER = "com.mysql.jdbc.Driver";
-	static final String DB_URL = "jdbc:mysql://localhost:3306/rma";
+	static final String DB_URL = "jdbc:mysql://localhost:3306/RMA_DATABASE";
 
 	// mySQL 사용자 로그인
 	static final String USERNAME = "root";
@@ -60,7 +60,8 @@ public class ServerMain implements Runnable {
 					JSONParser jsonParser = new JSONParser();
 					JSONObject obj = (JSONObject) jsonParser.parse(bufferedReader.readLine());
 
-					saveCompanyInformation(obj);
+//					saveCompanyInformation(obj);
+					checkInformation(obj);
 
 				} catch (Exception e) {
 					e.printStackTrace();
@@ -84,51 +85,62 @@ public class ServerMain implements Runnable {
 		serverMain.start();
 
 	}
-	
-	
-	private boolean checkRowExist(String TableName, String PrimaryKey) throws Exception{
-		
+
+	private boolean checkRowExist(String TableName, String PrimaryKey) throws Exception {
+
 		// sql문 선언 준비.
 		statement = mySQLconnection.createStatement();
 
-		ResultSet resultSet = statement.executeQuery(
-				"SELECT * FROM `site` where " +  TableName + " = '" + PrimaryKey + "'");
+		ResultSet resultSet = statement
+				.executeQuery("SELECT * FROM `site` where " + TableName + " = '" + PrimaryKey + "'");
 
 		if (!resultSet.next()) {
 			return false;
 		}
-		
+
 		return true;
-		
+
 	}
-	
-	
-	
-	//사이트가 없으면 추가. 있으면 넘어가기. 
-	private void saveSiteExist(JSONObject obj) throws Exception{
-		
+
+	// 사이트가 없으면 추가. 있으면 넘어가기.
+	private void saveSiteExist(JSONObject obj) throws Exception {
+
 		// sql문 선언 준비.
 		statement = mySQLconnection.createStatement();
 
-		ResultSet resultSet = statement.executeQuery(
-				"SELECT * FROM `site` where siteName = '" + obj.get("companySiteName").toString() + "'");
+		ResultSet resultSet = statement
+				.executeQuery("SELECT * FROM `site` where siteName = '" + obj.get("companySiteName").toString() + "'");
 
 		if (!resultSet.next()) {
-			
-			System.out.println("사이트가없어여");
+
+			System.out.println("사이트가없어여 , " + obj.get("companySiteName").toString());
 			String sql = "INSERT INTO `site` VALUES(?)";
 
 			pstmt = mySQLconnection.prepareStatement(sql);
 			pstmt.setString(1, obj.get("companySiteName").toString());
 			pstmt.executeUpdate();
 		}
-		
+
 	}
 
-	//컴퍼니 정보 추가. 
+	// 컴퍼니 정보 추가.
 	private void saveCompanyInformation(JSONObject obj) throws Exception {
-		
+
+		// 없으면 저장, 있으면 넘어감.
 		saveSiteExist(obj);
+
+		statement = mySQLconnection.createStatement();
+
+		ResultSet resultSet = statement.executeQuery(
+				"SELECT * FROM `company` WHERE companyName = '" + obj.get("companyName").toString() + "'");
+		
+		//있으면 리턴. 
+		if(resultSet.next()){
+			System.out.println("MySQL : companyName 이미 존재. ");
+			return;
+		}
+		
+		//없으면 추가. 
 
 		String sql = "INSERT INTO company VALUES(?,?,?,?,?,?,?)";
 
@@ -142,7 +154,25 @@ public class ServerMain implements Runnable {
 		pstmt.setString(7, obj.get("companySiteName").toString());
 
 		pstmt.executeUpdate();
+		
+		
+		
 
 	}
 
+	
+	private void checkInformation(JSONObject obj){
+		
+		System.out.println("정보 출력");
+		
+		String str = "OrderNumber : " + obj.get("rmaOrderNumber").toString() +
+				"\nContents : " + obj.get("rmaContents").toString() +
+				"\nBillTo : " + obj.get("rmaBillTo").toString() + 
+				"\nShipTo : " + obj.get("rmaShipTo").toString() +
+				"\nTrackingNumber : " + obj.get("rmaTrackingNumber").toString();
+		
+		
+		System.out.println(str);
+		
+	}
 }
