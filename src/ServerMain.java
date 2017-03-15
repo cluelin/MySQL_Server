@@ -1,5 +1,9 @@
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.PrintStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.sql.Connection;
@@ -28,6 +32,8 @@ public class ServerMain implements Runnable {
 	Statement statement = null;
 	PreparedStatement pstmt = null;
 	BufferedReader bufferedReader;
+	BufferedWriter bufferedWriter;
+	PrintStream printStream;
 
 	@Override
 	public void run() {
@@ -56,12 +62,12 @@ public class ServerMain implements Runnable {
 
 					// 클라이언트로부터 읽어들일 리더 준비.
 					bufferedReader = new BufferedReader(new InputStreamReader(client.getInputStream()));
+					printStream = new PrintStream(client.getOutputStream());
 
 					JSONParser jsonParser = new JSONParser();
 					JSONObject obj = (JSONObject) jsonParser.parse(bufferedReader.readLine());
 
-//					saveCompanyInformation(obj);
-					checkInformation(obj);
+					checkAction(obj);
 
 				} catch (Exception e) {
 					e.printStackTrace();
@@ -86,19 +92,50 @@ public class ServerMain implements Runnable {
 
 	}
 
-	private boolean checkRowExist(String TableName, String PrimaryKey) throws Exception {
+	// 수행할 동작 결정
+	private void checkAction(JSONObject obj) throws Exception {
 
-		// sql문 선언 준비.
-		statement = mySQLconnection.createStatement();
+		String actionStr = obj.get("Action").toString();
 
-		ResultSet resultSet = statement
-				.executeQuery("SELECT * FROM `site` where " + TableName + " = '" + PrimaryKey + "'");
+		System.out.println("action : " + actionStr);
 
-		if (!resultSet.next()) {
-			return false;
+		if (actionStr == null) {
+			// Action 없을때.
+			return;
+		} else if (actionStr.equals("requestRMANumber")) {
+			getRMANumber();
+		} else if (actionStr.equals("requestSaveRMAData")) {
+			// RMA information 저장
+			saveRMAInformation(obj);
 		}
 
-		return true;
+	}
+
+	// 다음번 RMA number 반환.
+	private void getRMANumber() throws Exception {
+
+		statement = mySQLconnection.createStatement();
+		ResultSet rs = statement.executeQuery("SHOW TABLE STATUS WHERE `Name` = 'rma_table'");
+		rs.next();
+		String nextid = rs.getString("Auto_increment");
+		System.out.println("next index : " + nextid);
+		
+		JSONObject obj = new JSONObject();
+		obj.put("RMANumber", "DA" + nextid);
+		
+		
+		printStream.println(obj.toJSONString());
+		
+		
+		statement = mySQLconnection.createStatement();
+		
+		String sql = "INSERT INTO `rma_table` (rmaDate, rmaItem, rmaOrderNumber, "
+				+ "rmaContents, rmaBillTo, rmaShipTo, rmaTrackingNumber, "
+				+ "rmaCompanyName, rmaCompanySite) VALUES ('','','','','','','','','')";
+		
+		statement.executeUpdate(sql);
+		
+		
 
 	}
 
@@ -123,24 +160,23 @@ public class ServerMain implements Runnable {
 
 	}
 
-	// 컴퍼니 정보 추가.
+	// 컴퍼니 정보 없으면 저장, 있으면 넘어감..
 	private void saveCompanyInformation(JSONObject obj) throws Exception {
 
-		// 없으면 저장, 있으면 넘어감.
 		saveSiteExist(obj);
 
 		statement = mySQLconnection.createStatement();
 
 		ResultSet resultSet = statement.executeQuery(
 				"SELECT * FROM `company` WHERE companyName = '" + obj.get("companyName").toString() + "'");
-		
-		//있으면 리턴. 
-		if(resultSet.next()){
+
+		// 있으면 리턴.
+		if (resultSet.next()) {
 			System.out.println("MySQL : companyName 이미 존재. ");
 			return;
 		}
-		
-		//없으면 추가. 
+
+		// 없으면 추가.
 
 		String sql = "INSERT INTO company VALUES(?,?,?,?,?,?,?)";
 
@@ -148,31 +184,36 @@ public class ServerMain implements Runnable {
 		pstmt.setString(1, obj.get("companyName").toString());
 		pstmt.setString(2, obj.get("companyAddress").toString());
 		pstmt.setString(3, obj.get("companyCity").toString());
-		pstmt.setInt(4, Integer.parseInt(obj.get("companyZipCode").toString()));
+		pstmt.setString(4, obj.get("companyZipCode").toString());
 		pstmt.setString(5, obj.get("companyPhone").toString());
 		pstmt.setString(6, obj.get("companyEmail").toString());
 		pstmt.setString(7, obj.get("companySiteName").toString());
 
 		pstmt.executeUpdate();
-		
-		
-		
 
 	}
 
-	
-	private void checkInformation(JSONObject obj){
-		
-		System.out.println("정보 출력");
-		
-		String str = "OrderNumber : " + obj.get("rmaOrderNumber").toString() +
-				"\nContents : " + obj.get("rmaContents").toString() +
-				"\nBillTo : " + obj.get("rmaBillTo").toString() + 
-				"\nShipTo : " + obj.get("rmaShipTo").toString() +
-				"\nTrackingNumber : " + obj.get("rmaTrackingNumber").toString();
-		
-		
-		System.out.println(str);
-		
+	private void saveRMAInformation(JSONObject obj) throws Exception {
+
+		saveCompanyInformation(obj);
+
+		String sql = "INSERT INTO `rma_table` (rmaDate, rmaItem, rmaOrderNumber, "
+				+ "rmaContents, rmaBillTo, rmaShipTo, rmaTrackingNumber, "
+				+ "rmaCompanyName, rmaCompanySite) VALUES (?,?,?,?,?,?,?,?,?)";
+
+		pstmt = mySQLconnection.prepareStatement(sql);
+		pstmt.setString(1, obj.get("rmaDate").toString());
+		// pstmt.setString(2, obj.get("rmaItem").toString());
+		pstmt.setString(2, "RMA Item");
+		pstmt.setString(3, obj.get("rmaOrderNumber").toString());
+		pstmt.setString(4, obj.get("rmaContents").toString());
+		pstmt.setString(5, obj.get("rmaBillTo").toString());
+		pstmt.setString(6, obj.get("rmaShipTo").toString());
+		pstmt.setString(7, obj.get("rmaTrackingNumber").toString());
+		pstmt.setString(8, obj.get("companyName").toString());
+		pstmt.setString(9, obj.get("companySiteName").toString());
+
+		pstmt.executeUpdate();
+
 	}
 }
