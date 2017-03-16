@@ -106,7 +106,7 @@ public class ServerMain implements Runnable {
 			getRMANumber();
 		} else if (actionStr.equals("requestSaveRMAData")) {
 			// RMA information 저장
-			saveRMAInformation(obj);
+			updateRMAInformation(obj);
 		}
 
 	}
@@ -129,9 +129,11 @@ public class ServerMain implements Runnable {
 		
 		statement = mySQLconnection.createStatement();
 		
+		
+		//미리 RMA NUMBER 확보를 위한 insert.1
 		String sql = "INSERT INTO `rma_table` (rmaDate, rmaItem, rmaOrderNumber, "
 				+ "rmaContents, rmaBillTo, rmaShipTo, rmaTrackingNumber, "
-				+ "rmaCompanyName, rmaCompanySite) VALUES ('','','','','','','','','')";
+				+ "rmaCompanyName, rmaCompanySite) VALUES ('','RMA ITEM','','','','','','companyName','SiteName')";
 		
 		statement.executeUpdate(sql);
 		
@@ -193,13 +195,14 @@ public class ServerMain implements Runnable {
 
 	}
 
+	//봉인 예정
 	private void saveRMAInformation(JSONObject obj) throws Exception {
 
 		saveCompanyInformation(obj);
 
 		String sql = "INSERT INTO `rma_table` (rmaDate, rmaItem, rmaOrderNumber, "
 				+ "rmaContents, rmaBillTo, rmaShipTo, rmaTrackingNumber, "
-				+ "rmaCompanyName, rmaCompanySite) VALUES (?,?,?,?,?,?,?,?,?)";
+				+ "rmaCompanyName, rmaCompanySite) VALUES (?,'RMA Item',?,?,?,?,?,'companyName','SiteName')";
 
 		pstmt = mySQLconnection.prepareStatement(sql);
 		pstmt.setString(1, obj.get("rmaDate").toString());
@@ -212,8 +215,31 @@ public class ServerMain implements Runnable {
 		pstmt.setString(7, obj.get("rmaTrackingNumber").toString());
 		pstmt.setString(8, obj.get("companyName").toString());
 		pstmt.setString(9, obj.get("companySiteName").toString());
+		
 
 		pstmt.executeUpdate();
 
+	}
+	
+	private void updateRMAInformation(JSONObject obj) throws Exception{
+		saveCompanyInformation(obj);
+
+		String sql = "UPDATE `rma_table` SET "
+				+ "rmaDate = '" + obj.get("rmaDate").toString() + "',"
+				+ "rmaItem = 'RMA Item' ,"
+				+ "rmaOrderNumber = '" + obj.get("rmaOrderNumber").toString() + "',"
+				+ "rmaContents = '" + obj.get("rmaContents").toString() + "',"
+				+ "rmaBillTo = '" + obj.get("rmaBillTo").toString() + "',"
+				+ "rmaShipTo = '" + obj.get("rmaShipTo").toString() + "',"
+				+ "rmaTrackingNumber = '" + obj.get("rmaTrackingNumber").toString() + "',"
+				+ "rmaCompanyName = '" + obj.get("companyName").toString() + "',"
+				+ "rmaCompanySite ='" + obj.get("companySiteName").toString() + "'"
+				+ "WHERE rmaIndex= " + (obj.get("rmaNumber").toString()).replace("DA", "");
+		
+		
+		statement = mySQLconnection.createStatement();
+		
+		statement.executeUpdate(sql);
+		
 	}
 }
