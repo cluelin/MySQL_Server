@@ -65,9 +65,14 @@ public class ServerMain implements Runnable {
 					printStream = new PrintStream(client.getOutputStream());
 
 					JSONParser jsonParser = new JSONParser();
-					JSONObject obj = (JSONObject) jsonParser.parse(bufferedReader.readLine());
+					JSONObject obj;
+					String input = bufferedReader.readLine();
 
-					checkAction(obj);
+					if (input != null) {
+						// 정해진 action 수행.
+						obj = (JSONObject) jsonParser.parse(input);
+						checkAction(obj);
+					}
 
 				} catch (Exception e) {
 					e.printStackTrace();
@@ -80,7 +85,9 @@ public class ServerMain implements Runnable {
 				}
 			}
 
-		} catch (Exception e) {
+		} catch (
+
+		Exception e) {
 			e.printStackTrace();
 		}
 	}
@@ -102,42 +109,41 @@ public class ServerMain implements Runnable {
 		if (actionStr == null) {
 			// Action 없을때.
 			return;
-		} else if (actionStr.equals("requestRMANumber")) {
-			getRMANumber();
+		} else if (actionStr.equals("requestRMAindex")) {
+			getRMAindex();
 		} else if (actionStr.equals("requestSaveRMAData")) {
 			// RMA information 저장
 			updateRMAInformation(obj);
+		} else if (actionStr.equals("requestSearchRelatedRMA")) {
+			searchRealatedRMAnumber(obj);
 		}
-
 	}
 
 	// 다음번 RMA number 반환.
-	private void getRMANumber() throws Exception {
+	private void getRMAindex() throws Exception {
 
 		statement = mySQLconnection.createStatement();
 		ResultSet rs = statement.executeQuery("SHOW TABLE STATUS WHERE `Name` = 'rma_table'");
 		rs.next();
 		String nextid = rs.getString("Auto_increment");
 		System.out.println("next index : " + nextid);
-		
+
 		JSONObject obj = new JSONObject();
-		obj.put("RMANumber", "DA" + nextid);
-		
-		
+		obj.put("RMAindex", nextid);
+
 		printStream.println(obj.toJSONString());
-		
-		
+
 		statement = mySQLconnection.createStatement();
-		
-		
-		//미리 RMA NUMBER 확보를 위한 insert.1
-		String sql = "INSERT INTO `rma_table` (rmaDate, rmaItem, rmaOrderNumber, "
+
+		// preserve RMA NUMBER
+		// 개선 필요. update시에 companyName과 siteName이 not null이면서 foreign key이기때문에
+		// 미리 저장되어있는 이름을 사용해서 등록해둔다..
+		// 종료시점에 해당 RMAnumber가 저장되지않았다면 삭제하는것도 고려해야한다.
+		String sql = "INSERT INTO `rma_table` (rmaDate, rmaOrderNumber, "
 				+ "rmaContents, rmaBillTo, rmaShipTo, rmaTrackingNumber, "
-				+ "rmaCompanyName, rmaCompanySite) VALUES ('','RMA ITEM','','','','','','companyName','SiteName')";
-		
+				+ "rmaCompanyName, rmaCompanySite) VALUES ('','','','','','','companyName','SiteName')";
+
 		statement.executeUpdate(sql);
-		
-		
 
 	}
 
@@ -195,7 +201,7 @@ public class ServerMain implements Runnable {
 
 	}
 
-	//봉인 예정
+	// 봉인 예정
 	private void saveRMAInformation(JSONObject obj) throws Exception {
 
 		saveCompanyInformation(obj);
@@ -215,31 +221,71 @@ public class ServerMain implements Runnable {
 		pstmt.setString(7, obj.get("rmaTrackingNumber").toString());
 		pstmt.setString(8, obj.get("companyName").toString());
 		pstmt.setString(9, obj.get("companySiteName").toString());
-		
 
 		pstmt.executeUpdate();
 
 	}
-	
-	private void updateRMAInformation(JSONObject obj) throws Exception{
+
+	private void searchRealatedRMAnumber(JSONObject obj) throws Exception {
+
+		System.out.println("searchRealatedRMAnumber");
+
+		String sql = "select * from rma_table where rmaCompanyName = '" + obj.get("companyName").toString() + "'";
+
+		System.out.println(sql);
+		statement = mySQLconnection.createStatement();
+
+		ResultSet resultSet = statement.executeQuery(sql);
+
+		while (resultSet.next()) {
+			String rmaNumber = resultSet.getString("rmaNumber");
+			String rmaContents = resultSet.getString("rmaContents");
+			String rmaDate = resultSet.getString("rmaDate");
+
+			JSONObject outputObj = new JSONObject();
+			outputObj.put("RMAnumber", rmaNumber);
+			outputObj.put("RMAcontents", rmaContents);
+			outputObj.put("RMAdate", rmaDate);
+
+			printStream.println(outputObj.toJSONString());
+
+			System.out.println("rmaNumber : " + rmaNumber + " rmaContents : " + rmaContents);
+		}
+
+	}
+
+	private void updateRMAInformation(JSONObject obj) throws Exception {
 		saveCompanyInformation(obj);
 
-		String sql = "UPDATE `rma_table` SET "
-				+ "rmaDate = '" + obj.get("rmaDate").toString() + "',"
-				+ "rmaItem = 'RMA Item' ,"
-				+ "rmaOrderNumber = '" + obj.get("rmaOrderNumber").toString() + "',"
-				+ "rmaContents = '" + obj.get("rmaContents").toString() + "',"
-				+ "rmaBillTo = '" + obj.get("rmaBillTo").toString() + "',"
-				+ "rmaShipTo = '" + obj.get("rmaShipTo").toString() + "',"
-				+ "rmaTrackingNumber = '" + obj.get("rmaTrackingNumber").toString() + "',"
-				+ "rmaCompanyName = '" + obj.get("companyName").toString() + "',"
-				+ "rmaCompanySite ='" + obj.get("companySiteName").toString() + "'"
-				+ "WHERE rmaIndex= " + (obj.get("rmaNumber").toString()).replace("DA", "");
-		
-		
+		String sql = "UPDATE `rma_table` SET " + "rmaNumber = '" + obj.get("rmaNumber").toString() + "',"
+				+ "rmaDate = '" + obj.get("rmaDate").toString() + "'," + "rmaOrderNumber = '"
+				+ obj.get("rmaOrderNumber").toString() + "'," + "rmaContents = '" + obj.get("rmaContents").toString()
+				+ "'," + "rmaBillTo = '" + obj.get("rmaBillTo").toString() + "'," + "rmaShipTo = '"
+				+ obj.get("rmaShipTo").toString() + "'," + "rmaTrackingNumber = '"
+				+ obj.get("rmaTrackingNumber").toString() + "'," + "rmaCompanyName = '"
+				+ obj.get("companyName").toString() + "'," + "rmaCompanySite ='" + obj.get("companySiteName").toString()
+				+ "'" + "WHERE rmaIndex= " + (obj.get("rmaNumber").toString()).replace("DA", "");
+
 		statement = mySQLconnection.createStatement();
-		
+
 		statement.executeUpdate(sql);
-		
+
+		// Item 정보 저장
+
+		sql = "INSERT INTO `RMAitemTable` (`serialNumber`, `rmaIndex`, `rmaNumber`, `itemName`) VALUES (?,?,?,?)";
+		pstmt = mySQLconnection.prepareStatement(sql);
+
+		for (int i = 0; i < Integer.parseInt(obj.get("itemCount").toString()); i++) {
+			System.out.println(obj.get("serialNumber" + i).toString());
+			System.out.println(obj.get("itemName" + i).toString());
+
+			pstmt.setString(1, obj.get("serialNumber" + i).toString());
+			pstmt.setString(2, (obj.get("rmaNumber").toString()).replace("DA", ""));
+			pstmt.setString(3, (obj.get("rmaNumber").toString()));
+			pstmt.setString(4, obj.get("itemName" + i).toString());
+			pstmt.executeUpdate();
+
+		}
+
 	}
 }
