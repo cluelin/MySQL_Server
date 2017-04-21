@@ -12,31 +12,37 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
 
+import javax.print.attribute.standard.Severity;
+
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 
 public class ServerMain implements Runnable {
 
-	// 서버는 자기 port number만 알고있으면 됨.
-	final public static int SERVER_PORT = 9090;
-
-	// mySQL사용하기위한 준비.
-	static final String JDBC_DRIVER = "com.mysql.jdbc.Driver";
-	static final String DB_URL = "jdbc:mysql://localhost:3306/RMA_DATABASE";
-
-	// mySQL 사용자 로그인
-	static final String USERNAME = "root";
-	static final String PASSWORD = "111111";
-
-	private Connection mySQLconnection = null;
-	private Statement statement = null;
-	private PreparedStatement pstmt = null;
+	// input/output information
 	private BufferedReader bufferedReader;
 	private BufferedWriter bufferedWriter;
 	private PrintStream printStream;
 
+	// JSON
 	private JSONParser jsonParser = new JSONParser();
 	private JSONObject objFromClient;
+	private JSONObject objToClient = new JSONObject();
+
+	private Connection mySQLconnection = null;
+	private Statement statement = null;
+	private PreparedStatement pstmt = null;
+
+	// Main Method Main Method Main Method Main Method Main Method Main Method
+	// Main Method Main Method Main Method
+	public static void main(String[] args) {
+
+		Thread serverMain = new Thread(new ServerMain());
+		serverMain.start();
+
+	}
+	// Main Method Main Method Main Method Main Method Main Method Main Method
+	// Main Method Main Method Main Method
 
 	@Override
 	public void run() {
@@ -44,7 +50,7 @@ public class ServerMain implements Runnable {
 		try {
 
 			// 서버소켓.
-			ServerSocket serverSocket = new ServerSocket(SERVER_PORT);
+			ServerSocket serverSocket = new ServerSocket(ServerInformation.SERVER_PORT);
 
 			while (true) {
 
@@ -55,35 +61,47 @@ public class ServerMain implements Runnable {
 				System.out.println("Sever : connected");
 
 				// 이건 뭔지 모르겠음.
-				Class.forName(JDBC_DRIVER);
+				Class.forName(ServerInformation.JDBC_DRIVER);
+
 				// mySQL과 접속.
-				mySQLconnection = DriverManager.getConnection(DB_URL, USERNAME, PASSWORD);
+				mySQLconnection = DriverManager.getConnection(ServerInformation.DB_URL, ServerInformation.USERNAME,
+						ServerInformation.PASSWORD);
+
 				statement = mySQLconnection.createStatement();
 
 				System.out.println("MySQL : Connected");
 
 				try {
 
-					// 클라이언트로부터 읽어들일 리더 준비.
+					// Reader and Print setting
 					bufferedReader = new BufferedReader(new InputStreamReader(client.getInputStream()));
 					printStream = new PrintStream(client.getOutputStream());
 
-					String input = bufferedReader.readLine();
+					while (true) {
+//						System.out.println("입력전");
+						String input = bufferedReader.readLine();
+//						System.out.println("입력후");
 
-					if (input != null) {
-						// 정해진 action 수행.
-						objFromClient = (JSONObject) jsonParser.parse(input);
-						checkAction(objFromClient.get("Action").toString());
+						if (input != null) {
+							// 정해진 action 수행.
+							objFromClient = (JSONObject) jsonParser.parse(input);
+							checkAction(objFromClient.get("Action").toString());
+						} else {
+							break;
+						}
+
 					}
 
 				} catch (Exception e) {
+					// 서버 연결 에러.
 					e.printStackTrace();
 					System.out.println("Server : Error!");
 				} finally {
+					// 연결 정상 종료.
 					System.out.println("Server : connection close");
 					System.out.println("MySQL Server : connection close");
-					// System.out.println("reservedRMAnumber Removed");
 					// removePreservedRMAnumber();
+
 					mySQLconnection.close();
 					client.close();
 				}
@@ -96,17 +114,8 @@ public class ServerMain implements Runnable {
 		}
 	}
 
-	public static void main(String[] args) {
-
-		Thread serverMain = new Thread(new ServerMain());
-		serverMain.start();
-
-	}
-
 	// 수행할 동작 결정
 	private void checkAction(String action) throws Exception {
-
-		// String action = obj.get("Action").toString();
 
 		System.out.println("action : " + action);
 
@@ -114,54 +123,67 @@ public class ServerMain implements Runnable {
 			// Action 없을때.
 			return;
 		} else if (action.equals("requestRMAindex")) {
+
 			getRMAindex();
+
 		} else if (action.equals("requestSaveRMAData")) {
-			// RMA information 저장
-			// updateRMAInformation(obj);
+
 			saveRMAInformation();
+
 		} else if (action.equals("requestSearchRelatedRMA")) {
+
 			searchRealatedRMAnumber();
+
 		} else if (action.equals("requestSiteName")) {
+
 			getSiteNameFromMysql(objFromClient.get("siteName").toString(), objFromClient.get("companyName").toString());
+
 		} else if (action.equals("requestCompanyName")) {
+
 			getCompanyNameFromMysql(objFromClient.get("companyName").toString());
+
 		} else if (action.equals("requestCompanyDetail")) {
+
 			getCompanyDetail(objFromClient.get("companyName").toString());
+
 		} else if (action.equals("requestRMADetail")) {
+
 			getRMADetailFromDatabase(objFromClient.get("rmaNumber").toString());
+
+		} else if (action.equals("requestItemName")) {
+
+			getItemNameFromDatabase(objFromClient.get("itemName").toString());
+
 		}
 	}
 
-	// 다음번 RMA number 반환.
+	// send next RMA number to Client.
 	private void getRMAindex() throws Exception {
 
-		// statement = mySQLconnection.createStatement();
+		// 다음 RMA number를 peak 해본다. (사용하지는 않고 번호만 알아냄)
 		ResultSet rs = statement.executeQuery("SHOW TABLE STATUS WHERE `Name` = 'rma_table'");
 		rs.next();
 		String nextid = rs.getString("Auto_increment");
+
+		// 다음 RMA number
 		System.out.println("next index : " + nextid);
 
-		JSONObject obj = new JSONObject();
-		obj.put("RMAindex", nextid);
+		objToClient.put("RMAindex", nextid);
 
-		printStream.println(obj.toJSONString());
+		printStream.println(objToClient.toJSONString());
 
-		// preserve RMA NUMBER
-		// 개선 필요. update시에 companyName과 siteName이 not null이면서 foreign key이기때문에
-		// 미리 저장되어있는 이름을 사용해서 등록해둔다..
-		// 종료시점에 해당 RMAnumber가 저장되지않았다면 삭제하는것도 고려해야한다.
-
-		try{
+		// 2017.04.20
+		// 이 파트가 필요한지 모르겠음.
+		// 지워도 동작할거같은데..? 고려해봐야겠음.
+		try {
+			// save dumy information.
 			String sql = "INSERT INTO `rma_table` (rmaDate, rmaOrderNumber, rmaCompanyName, siteCode) VALUES ('','','!@#','!@#')";
-
 			statement.executeUpdate(sql);
 			removePreservedRMAnumber();
 
-		}catch(Exception e){
+		} catch (Exception e) {
 			System.out.println("RMA number 기록을 위해 일부러 잘못 입력한다. 그래도 rmaNumber는 기록됨. ");
 		}
-		
-		
 
 	}
 
@@ -174,17 +196,16 @@ public class ServerMain implements Runnable {
 
 	}
 
-	// 사이트가 없으면 추가. 있으면 넘어가기.
+	// Add new Site, if exist then move on
+	// return site location ID.
 	private int saveSite() throws Exception {
 
-		// sql문 선언 준비.
-
-		// company와 site명이 같은경우, 넘어감.
+		// company와 site명이 같은경우를 검색.
 		ResultSet resultSet = statement
 				.executeQuery("SELECT * FROM `site` where siteName = '" + objFromClient.get("siteName").toString()
 						+ "' AND " + "companyName = '" + objFromClient.get("companyName") + "'");
 
-		// 사이트가 존재하지 않을때 추가.
+		// 검색 결과가 존재하지 않을때 추가.
 		if (!resultSet.next()) {
 
 			ResultSet rs = statement.executeQuery("SHOW TABLE STATUS WHERE `Name` = 'site'");
@@ -300,27 +321,9 @@ public class ServerMain implements Runnable {
 
 	}
 
-	private void updateRMAInformation(JSONObject objFromClient) throws Exception {
-		saveCompanyInformation();
+	private void saveRMAItem(JSONObject objFromClient) throws Exception {
 
-		String sql = "UPDATE `rma_table` SET " + "rmaNumber = '" + objFromClient.get("rmaNumber").toString() + "',"
-				+ "rmaDate = '" + objFromClient.get("rmaDate").toString() + "'," + "rmaOrderNumber = '"
-				+ objFromClient.get("rmaOrderNumber").toString() + "'," + "rmaContents = '"
-				+ objFromClient.get("rmaContents").toString() + "'," + "rmaBillTo = '"
-				+ objFromClient.get("rmaBillTo").toString() + "'," + "rmaShipTo = '"
-				+ objFromClient.get("rmaShipTo").toString() + "'," + "rmaTrackingNumber = '"
-				+ objFromClient.get("rmaTrackingNumber").toString() + "'," + "rmaCompanyName = '"
-				+ objFromClient.get("companyName").toString() + "'," + "rmaCompanySite ='"
-				+ objFromClient.get("companySiteName").toString() + "'" + "WHERE rmaIndex= "
-				+ (objFromClient.get("rmaNumber").toString()).replace("DA", "");
-
-		// statement = mySQLconnection.createStatement();
-
-		statement.executeUpdate(sql);
-
-		// Item 정보 저장
-
-		sql = "INSERT INTO `RMAitemTable` (`serialNumber`, `rmaIndex`, `rmaNumber`, `itemName`) VALUES (?,?,?,?)";
+		String sql = "INSERT INTO `RMAitemTable` (`serialNumber`, `rmaIndex`, `rmaNumber`, `itemName`) VALUES (?,?,?,?)";
 		pstmt = mySQLconnection.prepareStatement(sql);
 
 		for (int i = 0; i < Integer.parseInt(objFromClient.get("itemCount").toString()); i++) {
@@ -354,15 +357,17 @@ public class ServerMain implements Runnable {
 			String rmaContents = resultSet.getString("rmaContents");
 			String rmaDate = resultSet.getString("rmaDate");
 
-			JSONObject outputObj = new JSONObject();
-			outputObj.put("RMAnumber", rmaNumber);
-			outputObj.put("RMAcontents", rmaContents);
-			outputObj.put("RMAdate", rmaDate);
+			JSONObject objToClient = new JSONObject();
+			objToClient.put("RMAnumber", rmaNumber);
+			objToClient.put("RMAcontents", rmaContents);
+			objToClient.put("RMAdate", rmaDate);
 
-			printStream.println(outputObj.toJSONString());
+			printStream.println(objToClient.toJSONString());
 
 			System.out.println("rmaNumber : " + rmaNumber + " rmaContents : " + rmaContents);
 		}
+
+		printStream.println("end");
 
 	}
 
@@ -386,8 +391,11 @@ public class ServerMain implements Runnable {
 
 			printStream.println(siteNameJSON.toJSONString());
 		}
+
+		printStream.println("end");
 	}
 
+	// prefix로 시작하는 companyName을 찾아서 client에게 반환.
 	private void getCompanyNameFromMysql(String prefix) throws Exception {
 
 		String sql = "SELECT companyName FROM company WHERE companyName LIKE '" + prefix
@@ -399,12 +407,44 @@ public class ServerMain implements Runnable {
 
 		while (resultSet.next()) {
 			String companyName = resultSet.getString("companyName");
+			System.out.println(companyName);
 
 			JSONObject companyNameJSON = new JSONObject();
 			companyNameJSON.put("companyName", companyName);
 
 			printStream.println(companyNameJSON.toJSONString());
 		}
+
+		printStream.println("end");
+	}
+
+	private void getItemNameFromDatabase(String prefix) throws Exception {
+
+		String sql = "SELECT * FROM item WHERE itemName LIKE '" + prefix + "%'";
+
+		System.out.println(sql);
+
+		ResultSet resultSet = statement.executeQuery(sql);
+
+		while (resultSet.next()) {
+
+			// Integer itemCode = resultSet.getInt("itemCode");
+			String itemName = resultSet.getString("itemName");
+			String itemDescription = resultSet.getString("itemDescription");
+			Integer itemPrice = resultSet.getInt("itemPrice");
+
+			System.out.println(itemName + itemDescription);
+
+			JSONObject itemNameJSON = new JSONObject();
+			// itemNameJSON.put("itemCode", itemCode);
+			itemNameJSON.put("itemName", itemName);
+			itemNameJSON.put("itemDescription", itemDescription);
+			itemNameJSON.put("itemPrice", itemPrice);
+
+			printStream.println(itemNameJSON.toJSONString());
+		}
+
+		printStream.println("end");
 	}
 
 	private void getCompanyDetail(String companyName) throws Exception {
@@ -425,6 +465,7 @@ public class ServerMain implements Runnable {
 
 			printStream.println(companyDetailJSON.toJSONString());
 		}
+		printStream.println(new String());
 	}
 
 	private void getRMADetailFromDatabase(String rmaNumber) throws Exception {
