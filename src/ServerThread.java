@@ -1,8 +1,6 @@
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
 import java.io.PrintStream;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -12,12 +10,10 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
 
-import javax.print.attribute.standard.Severity;
-
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 
-public class ServerMain implements Runnable {
+public class ServerThread implements Runnable {
 
 	// input/output information
 	private BufferedReader bufferedReader;
@@ -33,40 +29,68 @@ public class ServerMain implements Runnable {
 	private Statement statement = null;
 	private PreparedStatement pstmt = null;
 
-	// Main Method Main Method Main Method Main Method Main Method Main Method
-	// Main Method Main Method Main Method
-	public static void main(String[] args) {
+	private Socket client;
 
-		Thread serverMain = new Thread(new ServerMain());
-		serverMain.start();
+	public ServerThread(Socket socket) {
+
+		this.client = socket;
 
 	}
-	// Main Method Main Method Main Method Main Method Main Method Main Method
-	// Main Method Main Method Main Method
 
 	@Override
 	public void run() {
 
 		try {
 
-			// 서버소켓.
-			ServerSocket serverSocket = new ServerSocket(ServerInformation.SERVER_PORT);
+			// 이건 뭔지 모르겠음.
+			Class.forName(ServerInformation.JDBC_DRIVER);
+
+			// mySQL과 접속.
+			mySQLconnection = DriverManager.getConnection(ServerInformation.DB_URL, ServerInformation.USERNAME,
+					ServerInformation.PASSWORD);
+
+			statement = mySQLconnection.createStatement();
+
+			System.out.println("MySQL : Connected");
+
+			// Reader and Print setting
+			bufferedReader = new BufferedReader(new InputStreamReader(client.getInputStream()));
+			printStream = new PrintStream(client.getOutputStream());
 
 			while (true) {
+				String input = bufferedReader.readLine();
 
-				System.out.println("Sever : waitting...");
+				if (input != null) {
+					// 정해진 action 수행.
+					objFromClient = (JSONObject) jsonParser.parse(input);
+					checkAction(objFromClient.get("Action").toString());
+				} else {
+					break;
+				}
 
-				// 서버소켓으로 접근하는 소켓 열어주기.
-				Socket client = serverSocket.accept();
-				System.out.println("Sever : connected");
-
-				new Thread(new ServerThread(client)).start();
-				
 			}
 
 		} catch (Exception e) {
+			// 서버 연결 에러.
 			e.printStackTrace();
+			System.out.println("initial set up error  or read error");
+
+		} finally {
+			try {
+				// 연결 정상 종료.
+				System.out.println("Server : connection close");
+				System.out.println("MySQL Server : connection close");
+				mySQLconnection.close();
+				client.close();
+			} catch (Exception e) {
+
+				System.out.println("termination Error");
+
+				e.printStackTrace();
+			}
+
 		}
+
 	}
 
 	// 수행할 동작 결정
@@ -127,27 +151,27 @@ public class ServerMain implements Runnable {
 
 		printStream.println(objToClient.toJSONString());
 
-		// 2017.04.20
-		// 이 파트가 필요한지 모르겠음.
-		// 지워도 동작할거같은데..? 고려해봐야겠음.
-		try {
-			// save dumy information.
-			String sql = "INSERT INTO `rma_table` (rmaDate, rmaOrderNumber, rmaCompanyName, siteCode) VALUES ('','','!@#','!@#')";
-			statement.executeUpdate(sql);
-			removePreservedRMAnumber();
-
-		} catch (Exception e) {
-			System.out.println("RMA number 기록을 위해 일부러 잘못 입력한다. 그래도 rmaNumber는 기록됨. ");
-		}
+		// 2017.04.21
+		// 사용하지않고 Peak 하면 다른 클라이언트가 접속했을때 중복될 위험이있음.
+		// 중복위험을 제거하기 위해 dumy information을 삽입후 삭제 해주는 과정이 필요함.
+		preservedRMAnumber();
 
 	}
 
-	public void removePreservedRMAnumber() throws Exception {
+	public void preservedRMAnumber() {
 
-		String sql = "DELETE FROM `rma_table` WHERE `rmaCompanyName` = '!@#'";
+		try {
+			// save dumy information.
+			String sql = "INSERT INTO `rma_table` (rmaDate, rmaOrderNumber, rmaCompanyName, siteCode) VALUES ('','','!@#','11795')";
+			statement.executeUpdate(sql);
 
-		// statement = mySQLconnection.createStatement();
-		statement.executeUpdate(sql);
+			sql = "DELETE FROM `rma_table` WHERE `rmaCompanyName` = '!@#'";
+			statement.executeUpdate(sql);
+
+		} catch (Exception e) {
+			System.out.println("RMA number 기록을 위해 일부러 잘못 입력한다. 그래도 rmaNumber는 기록됨. ");
+//			e.printStackTrace();
+		}
 
 	}
 
