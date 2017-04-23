@@ -170,14 +170,14 @@ public class ServerThread implements Runnable {
 
 		} catch (Exception e) {
 			System.out.println("RMA number 기록을 위해 일부러 잘못 입력한다. 그래도 rmaNumber는 기록됨. ");
-//			e.printStackTrace();
+			// e.printStackTrace();
 		}
 
 	}
 
 	// Add new Site, if exist then move on
 	// return site location ID.
-	private int saveSite() throws Exception {
+	private int saveSiteInformation() throws Exception {
 
 		// company와 site명이 같은경우를 검색.
 		ResultSet resultSet = statement
@@ -204,21 +204,22 @@ public class ServerThread implements Runnable {
 			return nextid;
 
 		} else {
-			// 기존에 있으면..?
+			// 기존에 있으면 등록된 사이트의 code를 반환.
 
 			return resultSet.getInt("siteCode");
 		}
 
 	}
 
-	// 컴퍼니 정보 없으면 저장, 있으면 Update!
-	private void saveCompanyInformation() throws Exception {
+	// if company information dosen't exist, then Save
+	// if there is , then Update!
+	private void updateCompanyInformation() throws Exception {
 
 		ResultSet resultSet = statement.executeQuery(
 				"SELECT * FROM `company` WHERE companyName = '" + objFromClient.get("companyName").toString() + "'");
 
-		// 있으면 리턴.
 		if (resultSet.next()) {
+			// 있으면 기존 정보 update.
 			System.out.println("MySQL : companyName 이미 존재. ");
 
 			String sql = "UPDATE `company` " + "SET companyAddress ='" + objFromClient.get("companyAddress").toString()
@@ -232,31 +233,37 @@ public class ServerThread implements Runnable {
 
 			statement.executeUpdate(sql);
 			return;
+		} else {
+
+			// 없으면 Insert new.
+
+			String sql = "INSERT INTO company VALUES(?,?,?,?,?,?)";
+
+			pstmt = mySQLconnection.prepareStatement(sql);
+			pstmt.setString(1, objFromClient.get("companyName").toString());
+			pstmt.setString(2, objFromClient.get("companyAddress").toString());
+			pstmt.setString(3, objFromClient.get("companyCity").toString());
+			pstmt.setString(4, objFromClient.get("companyZipCode").toString());
+			pstmt.setString(5, objFromClient.get("companyPhone").toString());
+			pstmt.setString(6, objFromClient.get("companyEmail").toString());
+
+			pstmt.executeUpdate();
+
 		}
-
-		// 없으면 추가.
-
-		String sql = "INSERT INTO company VALUES(?,?,?,?,?,?)";
-
-		pstmt = mySQLconnection.prepareStatement(sql);
-		pstmt.setString(1, objFromClient.get("companyName").toString());
-		pstmt.setString(2, objFromClient.get("companyAddress").toString());
-		pstmt.setString(3, objFromClient.get("companyCity").toString());
-		pstmt.setString(4, objFromClient.get("companyZipCode").toString());
-		pstmt.setString(5, objFromClient.get("companyPhone").toString());
-		pstmt.setString(6, objFromClient.get("companyEmail").toString());
-
-		pstmt.executeUpdate();
 
 	}
 
 	// updateRMAInformation, saveRMAInformation 둘중 하나면 충분.
 	private void saveRMAInformation() throws Exception {
 
-		saveCompanyInformation();
-		int siteCode = saveSite();
+		// add or update company information
+		updateCompanyInformation();
+
+		// add site information, and get site code
+		int siteCode = saveSiteInformation();
 
 		System.out.println("siteCode : " + siteCode);
+		System.out.println("rmaNumber : " + objFromClient.get("rmaNumber").toString());
 
 		ResultSet resultSet = statement.executeQuery(
 				"SELECT * FROM `rma_table` WHERE rmaNumber = '" + objFromClient.get("rmaNumber").toString() + "'");
@@ -298,21 +305,35 @@ public class ServerThread implements Runnable {
 
 		}
 
+		saveRMAItem(objFromClient);
+
 	}
 
 	private void saveRMAItem(JSONObject objFromClient) throws Exception {
 
-		String sql = "INSERT INTO `RMAitemTable` (`serialNumber`, `rmaIndex`, `rmaNumber`, `itemName`) VALUES (?,?,?,?)";
+		
+		System.out.println("saveRMAItem");
+		
+		String sql = "INSERT INTO `RMAitemTable` (`serialNumber`, `rmaIndex`, `rmaNumber`, `itemName`, "
+				+ "`itemDescription`, `itemPrice`) VALUES (?,?,?,?,?,?)";
+		
+		System.out.println(sql);
 		pstmt = mySQLconnection.prepareStatement(sql);
 
 		for (int i = 0; i < Integer.parseInt(objFromClient.get("itemCount").toString()); i++) {
-			System.out.println(objFromClient.get("serialNumber" + i).toString());
-			System.out.println(objFromClient.get("itemName" + i).toString());
+			
+			System.out.println(objFromClient.get("itemSerialNumber"+i).toString());
+			System.out.println(objFromClient.get("rmaNumber").toString());
+			System.out.println(objFromClient.get("itemName"+i).toString());
+			System.out.println(objFromClient.get("itemPrice"+i).toString());
 
-			pstmt.setString(1, objFromClient.get("serialNumber" + i).toString());
+			pstmt.setString(1, objFromClient.get("itemSerialNumber"+i).toString());
 			pstmt.setString(2, (objFromClient.get("rmaNumber").toString()).replace("DA", ""));
 			pstmt.setString(3, (objFromClient.get("rmaNumber").toString()));
-			pstmt.setString(4, objFromClient.get("itemName" + i).toString());
+			pstmt.setString(4, objFromClient.get("itemName"+i).toString());
+			pstmt.setString(5, objFromClient.get("itemDescription"+i).toString());
+			pstmt.setInt(6, Integer.parseInt(objFromClient.get("itemPrice"+i).toString()));
+
 			pstmt.executeUpdate();
 
 		}
@@ -455,9 +476,10 @@ public class ServerThread implements Runnable {
 
 		ResultSet resultSet = statement.executeQuery(sql);
 
+		JSONObject RMADetailJSON = new JSONObject();
+
 		while (resultSet.next()) {
 
-			JSONObject RMADetailJSON = new JSONObject();
 			RMADetailJSON.put("rmaNumber", resultSet.getString("rmaNumber"));
 			RMADetailJSON.put("rmaDate", resultSet.getString("rmaDate"));
 
@@ -467,8 +489,45 @@ public class ServerThread implements Runnable {
 			RMADetailJSON.put("rmaShipTo", resultSet.getString("rmaShipTo"));
 			RMADetailJSON.put("rmaTrackingNumber", resultSet.getString("rmaTrackingNumber"));
 
-			printStream.println(RMADetailJSON.toJSONString());
 		}
+		
+		sql = "SELECT count(*) FROM rmaitemtable WHERE rmaNumber = '" + rmaNumber + "'";
+		
+		resultSet = statement.executeQuery(sql);
+		int itemCount;
+		
+		while (resultSet.next()) {
+			System.out.println("개수 : " + resultSet.getInt("count(*)"));
+			
+			itemCount = resultSet.getInt("count(*)");
+
+		}
+		
+		
+
+		sql = "SELECT * FROM rmaitemtable WHERE rmaNumber = '" + rmaNumber + "'";
+
+		resultSet = statement.executeQuery(sql);
+
+		int i = 0;
+		while (resultSet.next()) {
+			
+			System.out.println(resultSet.getString("itemName"));
+			System.out.println(resultSet.getString("SerialNumber"));
+			System.out.println(resultSet.getString("itemDescription"));
+			System.out.println(resultSet.getString("itemPrice"));
+
+			RMADetailJSON.put("itemName"+i, resultSet.getString("itemName"));
+			RMADetailJSON.put("serialNumber"+i, resultSet.getString("SerialNumber"));
+			RMADetailJSON.put("itemDescription"+i, resultSet.getString("itemDescription"));
+			RMADetailJSON.put("itemPrice"+i, resultSet.getString("itemPrice"));
+			i++;
+
+		}
+		
+		RMADetailJSON.put("itemCount", i);
+
+		printStream.println(RMADetailJSON.toJSONString());
 
 	}
 
