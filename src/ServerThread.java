@@ -29,11 +29,11 @@ public class ServerThread implements Runnable {
 	private Statement statement = null;
 	private PreparedStatement pstmt = null;
 
-	private Socket client;
+	private Socket clientSocket;
 
-	public ServerThread(Socket socket) {
+	public ServerThread(Socket clientSocket) {
 
-		this.client = socket;
+		this.clientSocket = clientSocket;
 
 	}
 
@@ -54,8 +54,8 @@ public class ServerThread implements Runnable {
 			System.out.println("MySQL : Connected");
 
 			// Reader and Print setting
-			bufferedReader = new BufferedReader(new InputStreamReader(client.getInputStream()));
-			printStream = new PrintStream(client.getOutputStream());
+			bufferedReader = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+			printStream = new PrintStream(clientSocket.getOutputStream());
 
 			while (true) {
 				String input = bufferedReader.readLine();
@@ -81,7 +81,7 @@ public class ServerThread implements Runnable {
 				System.out.println("Server : connection close");
 				System.out.println("MySQL Server : connection close");
 				mySQLconnection.close();
-				client.close();
+				clientSocket.close();
 			} catch (Exception e) {
 
 				System.out.println("termination Error");
@@ -115,6 +115,9 @@ public class ServerThread implements Runnable {
 
 		} else if (action.equals("requestSiteName")) {
 
+			System.out.println("siteName : " + objFromClient.get("siteName").toString());
+			System.out.println("companyName : " + objFromClient.get("companyName").toString());
+
 			getSiteNameFromMysql(objFromClient.get("siteName").toString(), objFromClient.get("companyName").toString());
 
 		} else if (action.equals("requestCompanyName")) {
@@ -133,6 +136,18 @@ public class ServerThread implements Runnable {
 
 			getItemNameFromDatabase(objFromClient.get("itemName").toString());
 
+		}else if( action.equals("checkRMAnumber")){
+			
+			JSONObject objToClient = new JSONObject();
+			
+			if(rmaNumberAlreadyUsed(objFromClient.get("rmaNumber").toString())){
+				objToClient.put("rmaNumberAlreadyUsed", true);
+			}else{
+				objToClient.put("rmaNumberAlreadyUsed", false);
+			}
+			
+			printStream.println(objToClient);
+			
 		}
 	}
 
@@ -311,28 +326,27 @@ public class ServerThread implements Runnable {
 
 	private void saveRMAItem(JSONObject objFromClient) throws Exception {
 
-		
 		System.out.println("saveRMAItem");
-		
+
 		String sql = "INSERT INTO `RMAitemTable` (`serialNumber`, `rmaIndex`, `rmaNumber`, `itemName`, "
 				+ "`itemDescription`, `itemPrice`) VALUES (?,?,?,?,?,?)";
-		
+
 		System.out.println(sql);
 		pstmt = mySQLconnection.prepareStatement(sql);
 
 		for (int i = 0; i < Integer.parseInt(objFromClient.get("itemCount").toString()); i++) {
-			
-			System.out.println(objFromClient.get("itemSerialNumber"+i).toString());
-			System.out.println(objFromClient.get("rmaNumber").toString());
-			System.out.println(objFromClient.get("itemName"+i).toString());
-			System.out.println(objFromClient.get("itemPrice"+i).toString());
 
-			pstmt.setString(1, objFromClient.get("itemSerialNumber"+i).toString());
+			System.out.println(objFromClient.get("itemSerialNumber" + i).toString());
+			System.out.println(objFromClient.get("rmaNumber").toString());
+			System.out.println(objFromClient.get("itemName" + i).toString());
+			System.out.println(objFromClient.get("itemPrice" + i).toString());
+
+			pstmt.setString(1, objFromClient.get("itemSerialNumber" + i).toString());
 			pstmt.setString(2, (objFromClient.get("rmaNumber").toString()).replace("DA", ""));
 			pstmt.setString(3, (objFromClient.get("rmaNumber").toString()));
-			pstmt.setString(4, objFromClient.get("itemName"+i).toString());
-			pstmt.setString(5, objFromClient.get("itemDescription"+i).toString());
-			pstmt.setInt(6, Integer.parseInt(objFromClient.get("itemPrice"+i).toString()));
+			pstmt.setString(4, objFromClient.get("itemName" + i).toString());
+			pstmt.setString(5, objFromClient.get("itemDescription" + i).toString());
+			pstmt.setInt(6, Integer.parseInt(objFromClient.get("itemPrice" + i).toString()));
 
 			pstmt.executeUpdate();
 
@@ -373,11 +387,10 @@ public class ServerThread implements Runnable {
 
 	private void getSiteNameFromMysql(String prefix, String CompanyName) throws Exception {
 
-		// String sql = "SELECT siteName FROM site WHERE siteName LIKE '" +
-		// prefix + "%'";
-
 		String sql = "SELECT siteName FROM site WHERE siteName LIKE '" + prefix + "%' AND companyName = '" + CompanyName
 				+ "'";
+
+		System.out.println(sql);
 
 		ResultSet resultSet = statement.executeQuery(sql);
 
@@ -465,7 +478,7 @@ public class ServerThread implements Runnable {
 
 			printStream.println(companyDetailJSON.toJSONString());
 		}
-		printStream.println(new String());
+		printStream.println("end");
 	}
 
 	private void getRMADetailFromDatabase(String rmaNumber) throws Exception {
@@ -490,20 +503,18 @@ public class ServerThread implements Runnable {
 			RMADetailJSON.put("rmaTrackingNumber", resultSet.getString("rmaTrackingNumber"));
 
 		}
-		
+
 		sql = "SELECT count(*) FROM rmaitemtable WHERE rmaNumber = '" + rmaNumber + "'";
-		
+
 		resultSet = statement.executeQuery(sql);
 		int itemCount;
-		
+
 		while (resultSet.next()) {
 			System.out.println("개수 : " + resultSet.getInt("count(*)"));
-			
+
 			itemCount = resultSet.getInt("count(*)");
 
 		}
-		
-		
 
 		sql = "SELECT * FROM rmaitemtable WHERE rmaNumber = '" + rmaNumber + "'";
 
@@ -511,23 +522,55 @@ public class ServerThread implements Runnable {
 
 		int i = 0;
 		while (resultSet.next()) {
-			
+
 			System.out.println(resultSet.getString("itemName"));
 			System.out.println(resultSet.getString("SerialNumber"));
 			System.out.println(resultSet.getString("itemDescription"));
 			System.out.println(resultSet.getString("itemPrice"));
 
-			RMADetailJSON.put("itemName"+i, resultSet.getString("itemName"));
-			RMADetailJSON.put("serialNumber"+i, resultSet.getString("SerialNumber"));
-			RMADetailJSON.put("itemDescription"+i, resultSet.getString("itemDescription"));
-			RMADetailJSON.put("itemPrice"+i, resultSet.getString("itemPrice"));
+			RMADetailJSON.put("itemName" + i, resultSet.getString("itemName"));
+			RMADetailJSON.put("serialNumber" + i, resultSet.getString("SerialNumber"));
+			RMADetailJSON.put("itemDescription" + i, resultSet.getString("itemDescription"));
+			RMADetailJSON.put("itemPrice" + i, resultSet.getString("itemPrice"));
 			i++;
 
 		}
-		
+
 		RMADetailJSON.put("itemCount", i);
 
 		printStream.println(RMADetailJSON.toJSONString());
+
+	}
+
+	// 2017.04.24
+	// 받아온 rmaNumber값이 현재 rma_table에 존재하는지 여부를 확인함.
+	// 이미 사용중이라면 true를 반환함.
+	public boolean rmaNumberAlreadyUsed(String rmaNumber) {
+
+		String sql = "SELECT count(*) FROM rma_table WHERE rmaNumber = '" + rmaNumber + "'";
+		System.out.println(sql);
+
+		int count = -1;
+
+		try {
+
+			ResultSet resultSet = statement.executeQuery(sql);
+			while (resultSet.next()) {
+				System.out.println("개수 : " + resultSet.getInt("count(*)"));
+
+				count = resultSet.getInt("count(*)");
+
+			}
+
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+
+		if (count >= 1) {
+			return true;
+		}
+
+		return false;
 
 	}
 
