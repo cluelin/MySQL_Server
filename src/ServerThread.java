@@ -478,7 +478,7 @@ public class ServerThread implements Runnable {
 
 			printStream.println(companyDetailJSON.toJSONString());
 		}
-		printStream.println("end");
+//		printStream.println("end");
 	}
 
 	private void getRMADetailFromDatabase(String rmaNumber) throws Exception {
