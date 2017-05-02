@@ -136,18 +136,18 @@ public class ServerThread implements Runnable {
 
 			getItemNameFromDatabase(objFromClient.get("itemName").toString());
 
-		}else if( action.equals("checkRMAnumber")){
-			
+		} else if (action.equals("checkRMAnumber")) {
+
 			JSONObject objToClient = new JSONObject();
-			
-			if(rmaNumberAlreadyUsed(objFromClient.get("rmaNumber").toString())){
+
+			if (rmaNumberAlreadyUsed(objFromClient.get("rmaNumber").toString())) {
 				objToClient.put("rmaNumberAlreadyUsed", true);
-			}else{
+			} else {
 				objToClient.put("rmaNumberAlreadyUsed", false);
 			}
-			
+
 			printStream.println(objToClient);
-			
+
 		}
 	}
 
@@ -336,19 +336,24 @@ public class ServerThread implements Runnable {
 
 		for (int i = 0; i < Integer.parseInt(objFromClient.get("itemCount").toString()); i++) {
 
-			System.out.println(objFromClient.get("itemSerialNumber" + i).toString());
-			System.out.println(objFromClient.get("rmaNumber").toString());
-			System.out.println(objFromClient.get("itemName" + i).toString());
-			System.out.println(objFromClient.get("itemPrice" + i).toString());
+			try {
 
-			pstmt.setString(1, objFromClient.get("itemSerialNumber" + i).toString());
-			pstmt.setString(2, (objFromClient.get("rmaNumber").toString()).replace("DA", ""));
-			pstmt.setString(3, (objFromClient.get("rmaNumber").toString()));
-			pstmt.setString(4, objFromClient.get("itemName" + i).toString());
-			pstmt.setString(5, objFromClient.get("itemDescription" + i).toString());
-			pstmt.setInt(6, Integer.parseInt(objFromClient.get("itemPrice" + i).toString()));
+				System.out.println(objFromClient.get("itemSerialNumber" + i).toString());
+				System.out.println(objFromClient.get("rmaNumber").toString());
+				System.out.println(objFromClient.get("itemName" + i).toString());
+				System.out.println(objFromClient.get("itemPrice" + i).toString());
 
-			pstmt.executeUpdate();
+				pstmt.setString(1, objFromClient.get("itemSerialNumber" + i).toString());
+				pstmt.setString(2, (objFromClient.get("rmaNumber").toString()).replace("DA", ""));
+				pstmt.setString(3, (objFromClient.get("rmaNumber").toString()));
+				pstmt.setString(4, objFromClient.get("itemName" + i).toString());
+				pstmt.setString(5, objFromClient.get("itemDescription" + i).toString());
+				pstmt.setInt(6, Integer.parseInt(objFromClient.get("itemPrice" + i).toString()));
+
+				pstmt.executeUpdate();
+			} catch (Exception e) {
+				// 여기는 무시
+			}
 
 		}
 
@@ -478,7 +483,7 @@ public class ServerThread implements Runnable {
 
 			printStream.println(companyDetailJSON.toJSONString());
 		}
-//		printStream.println("end");
+		// printStream.println("end");
 	}
 
 	private void getRMADetailFromDatabase(String rmaNumber) throws Exception {
