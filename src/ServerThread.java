@@ -13,6 +13,8 @@ import java.sql.Statement;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 
+import com.mysql.jdbc.exceptions.jdbc4.MySQLIntegrityConstraintViolationException;
+
 public class ServerThread implements Runnable {
 
 	// input/output information
@@ -271,6 +273,11 @@ public class ServerThread implements Runnable {
 	// updateRMAInformation, saveRMAInformation 둘중 하나면 충분.
 	private void saveRMAInformation() throws Exception {
 
+		if (!saveValidate(objFromClient)) {
+			System.out.println("안됨여");
+			return;
+		}
+
 		// add or update company information
 		updateCompanyInformation();
 
@@ -351,12 +358,82 @@ public class ServerThread implements Runnable {
 				pstmt.setInt(6, Integer.parseInt(objFromClient.get("itemPrice" + i).toString()));
 
 				pstmt.executeUpdate();
+			} catch (NullPointerException e) {
+				// 이건 행에 아이템 없다는 거니까 무시.
+			} catch (MySQLIntegrityConstraintViolationException e) {
+				System.out.println("제약 조건 위반!");
+				e.printStackTrace();
 			} catch (Exception e) {
-				// 여기는 무시
+
+				e.printStackTrace();
 			}
 
 		}
 
+	}
+
+	private boolean saveValidate(JSONObject objFromClient) throws Exception {
+
+		for (int i = 0; i < Integer.parseInt(objFromClient.get("itemCount").toString()); i++) {
+
+			try {
+
+				String sql;
+				ResultSet resultSet;
+				int itemCount;
+
+				sql = "SELECT count(*) FROM item WHERE itemName = '" + objFromClient.get("itemName" + i).toString()
+						+ "'";
+
+				resultSet = statement.executeQuery(sql);
+				itemCount = -1;
+
+				while (resultSet.next()) {
+					System.out.println("개수 : " + resultSet.getInt("count(*)"));
+
+					itemCount = resultSet.getInt("count(*)");
+
+				}
+
+				if (itemCount <= 0) {
+					// 이름이 존재하는 애가 없음
+					return false;
+				}
+
+				sql = "SELECT count(*) FROM rmaitemtable WHERE serialNumber = '"
+						+ objFromClient.get("itemSerialNumber" + i).toString() + "'";
+
+				resultSet = statement.executeQuery(sql);
+				itemCount = -1;
+
+				while (resultSet.next()) {
+					System.out.println("개수 : " + resultSet.getInt("count(*)"));
+
+					itemCount = resultSet.getInt("count(*)");
+
+				}
+
+				if (itemCount > 0) {
+					// 시리얼넘버가 일치하는 애가 기존에 존재. 에러 발생.
+					return false;
+				}
+
+				try {
+					Integer.parseInt(objFromClient.get("itemPrice" + i).toString());
+				} catch (NumberFormatException e) {
+					// price가 숫자가 아님. 에러
+					return false;
+				}
+
+			} catch (NullPointerException e) {
+
+				// 없는건 안해도됨.
+				// e.printStackTrace();
+			}
+
+		}
+
+		return true;
 	}
 
 	private void searchRealatedRMAnumber() throws Exception {
@@ -496,17 +573,19 @@ public class ServerThread implements Runnable {
 
 		JSONObject RMADetailJSON = new JSONObject();
 
+		int siteCode = -1;
+
 		while (resultSet.next()) {
 
+			//
 			RMADetailJSON.put("rmaNumber", resultSet.getString("rmaNumber"));
 			RMADetailJSON.put("rmaDate", resultSet.getString("rmaDate"));
-
 			RMADetailJSON.put("rmaOrderNumber", resultSet.getString("rmaOrderNumber"));
 			RMADetailJSON.put("rmaContents", resultSet.getString("rmaContents"));
 			RMADetailJSON.put("rmaBillTo", resultSet.getString("rmaBillTo"));
 			RMADetailJSON.put("rmaShipTo", resultSet.getString("rmaShipTo"));
 			RMADetailJSON.put("rmaTrackingNumber", resultSet.getString("rmaTrackingNumber"));
-
+			siteCode = resultSet.getInt("siteCode");
 		}
 
 		sql = "SELECT count(*) FROM rmaitemtable WHERE rmaNumber = '" + rmaNumber + "'";
@@ -542,6 +621,15 @@ public class ServerThread implements Runnable {
 		}
 
 		RMADetailJSON.put("itemCount", i);
+
+		sql = "SELECT * FROM site WHERE siteCode = '" + siteCode + "'";
+
+		resultSet = statement.executeQuery(sql);
+
+		while (resultSet.next()) {
+			RMADetailJSON.put("siteName", resultSet.getString("siteName"));
+
+		}
 
 		printStream.println(RMADetailJSON.toJSONString());
 
