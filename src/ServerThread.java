@@ -150,7 +150,74 @@ public class ServerThread implements Runnable {
 
 			printStream.println(objToClient);
 
+		} else if (action.equals("validate")) {
+
+			JSONObject itemValidateObject;
+			
+			itemValidateObject = getItemValidateObject(objFromClient);
+			
+			printStream.println(itemValidateObject);
 		}
+	}
+
+	private JSONObject getItemValidateObject(JSONObject objFromClient) throws Exception {
+
+		
+		JSONObject validateResult = new JSONObject();
+		int itemCount = Integer.parseInt(objFromClient.get("itemCount").toString());
+
+		String sql;
+		ResultSet resultSet;
+		int itemNameCount;
+		
+		validateResult.put("itemNameValidation", true);
+		validateResult.put("itemSerialValidation", true);
+
+		for (int i = 0; i < itemCount; i++) {
+			
+			System.out.println("itemName + i : " + objFromClient.get("itemName" + i));
+
+			//itemName이 list에 존재하는가.. 
+			sql = "SELECT count(*) FROM item WHERE itemName = '" + objFromClient.get("itemName" + i).toString() + "'";
+
+			resultSet = statement.executeQuery(sql);
+			itemNameCount = -1;
+
+			while (resultSet.next()) {
+				System.out.println("개수 : " + resultSet.getInt("count(*)"));
+
+				itemNameCount = resultSet.getInt("count(*)");
+
+			}
+
+			if (itemNameCount <= 0) {
+				// 이름이 존재하는 애가 없음
+				validateResult.put("itemNameValidation", false);
+				break;
+			}
+			
+			sql = "SELECT count(*) FROM rmaitemtable WHERE serialNumber = '"
+					+ objFromClient.get("itemSerialNumber" + i).toString() + "'";
+
+			resultSet = statement.executeQuery(sql);
+			int itemSerialCount = -1;
+
+			while (resultSet.next()) {
+				System.out.println("개수 : " + resultSet.getInt("count(*)"));
+
+				itemSerialCount = resultSet.getInt("count(*)");
+
+			}
+
+			if (itemSerialCount > 0) {
+				// 시리얼넘버가 일치하는 애가 기존에 존재. 에러 발생.
+				validateResult.put("itemSerialValidation", false);
+				break;
+			}
+
+		}
+		
+		return validateResult;
 	}
 
 	// send next RMA number to Client.
@@ -273,11 +340,6 @@ public class ServerThread implements Runnable {
 	// updateRMAInformation, saveRMAInformation 둘중 하나면 충분.
 	private void saveRMAInformation() throws Exception {
 
-		if (!saveValidate(objFromClient)) {
-			System.out.println("안됨여");
-			return;
-		}
-
 		// add or update company information
 		updateCompanyInformation();
 
@@ -370,70 +432,6 @@ public class ServerThread implements Runnable {
 
 		}
 
-	}
-
-	private boolean saveValidate(JSONObject objFromClient) throws Exception {
-
-		for (int i = 0; i < Integer.parseInt(objFromClient.get("itemCount").toString()); i++) {
-
-			try {
-
-				String sql;
-				ResultSet resultSet;
-				int itemCount;
-
-				sql = "SELECT count(*) FROM item WHERE itemName = '" + objFromClient.get("itemName" + i).toString()
-						+ "'";
-
-				resultSet = statement.executeQuery(sql);
-				itemCount = -1;
-
-				while (resultSet.next()) {
-					System.out.println("개수 : " + resultSet.getInt("count(*)"));
-
-					itemCount = resultSet.getInt("count(*)");
-
-				}
-
-				if (itemCount <= 0) {
-					// 이름이 존재하는 애가 없음
-					return false;
-				}
-
-				sql = "SELECT count(*) FROM rmaitemtable WHERE serialNumber = '"
-						+ objFromClient.get("itemSerialNumber" + i).toString() + "'";
-
-				resultSet = statement.executeQuery(sql);
-				itemCount = -1;
-
-				while (resultSet.next()) {
-					System.out.println("개수 : " + resultSet.getInt("count(*)"));
-
-					itemCount = resultSet.getInt("count(*)");
-
-				}
-
-				if (itemCount > 0) {
-					// 시리얼넘버가 일치하는 애가 기존에 존재. 에러 발생.
-					return false;
-				}
-
-				try {
-					Integer.parseInt(objFromClient.get("itemPrice" + i).toString());
-				} catch (NumberFormatException e) {
-					// price가 숫자가 아님. 에러
-					return false;
-				}
-
-			} catch (NullPointerException e) {
-
-				// 없는건 안해도됨.
-				// e.printStackTrace();
-			}
-
-		}
-
-		return true;
 	}
 
 	private void searchRealatedRMAnumber() throws Exception {
