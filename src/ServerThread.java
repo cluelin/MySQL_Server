@@ -349,11 +349,16 @@ public class ServerThread implements Runnable {
 		System.out.println("siteCode : " + siteCode);
 		System.out.println("rmaNumber : " + objFromClient.get("rmaNumber").toString());
 
+		
+		//전달되어온 rmaNumber가 현재 rma_table에 존재하는지 확인하는 쿼리.
+		//Query for verify that rmaNumber from the client exist on the server
 		ResultSet resultSet = statement.executeQuery(
 				"SELECT * FROM `rma_table` WHERE rmaNumber = '" + objFromClient.get("rmaNumber").toString() + "'");
 
+		
 		if (resultSet.next()) {
 
+			//if exist, Update that query.
 			String sql = "UPDATE `rma_table` SET rmaDate = '" + objFromClient.get("rmaDate").toString() + "',"
 					+ "rmaOrderNumber = '" + objFromClient.get("rmaOrderNumber").toString() + "'," + "rmaContents = '"
 					+ objFromClient.get("rmaContents").toString() + "'," + "rmaBillTo = '"
@@ -368,6 +373,7 @@ public class ServerThread implements Runnable {
 
 		} else {
 
+			// if doesn't exist, Insert information
 			String sql = "INSERT INTO `rma_table` (rmaIndex, rmaNumber, rmaDate, rmaOrderNumber, "
 					+ "rmaContents, rmaBillTo, rmaShipTo, rmaTrackingNumber, "
 					+ "rmaCompanyName, siteCode) VALUES (?,?,?,?,?,?,?,?,?,?)";
@@ -389,6 +395,7 @@ public class ServerThread implements Runnable {
 
 		}
 
+		//item 저장은 분리해둠.
 		saveRMAItem(objFromClient);
 
 	}
@@ -398,7 +405,7 @@ public class ServerThread implements Runnable {
 		System.out.println("saveRMAItem");
 
 		String sql = "INSERT INTO `RMAitemTable` (`serialNumber`, `rmaIndex`, `rmaNumber`, `itemName`, "
-				+ "`itemDescription`, `itemPrice`) VALUES (?,?,?,?,?,?)";
+				+ "`itemDescription`, `itemPrice`, `receive`) VALUES (?,?,?,?,?,?,?)";
 
 		System.out.println(sql);
 		pstmt = mySQLconnection.prepareStatement(sql);
@@ -410,7 +417,7 @@ public class ServerThread implements Runnable {
 				System.out.println(objFromClient.get("itemSerialNumber" + i).toString());
 				System.out.println(objFromClient.get("rmaNumber").toString());
 				System.out.println(objFromClient.get("itemName" + i).toString());
-				System.out.println(objFromClient.get("itemPrice" + i).toString());
+				System.out.println("item receive : " + objFromClient.get("itemReceive" + i).toString());
 
 				pstmt.setString(1, objFromClient.get("itemSerialNumber" + i).toString());
 				pstmt.setString(2, (objFromClient.get("rmaNumber").toString()).replace("DA", ""));
@@ -418,6 +425,7 @@ public class ServerThread implements Runnable {
 				pstmt.setString(4, objFromClient.get("itemName" + i).toString());
 				pstmt.setString(5, objFromClient.get("itemDescription" + i).toString());
 				pstmt.setInt(6, Integer.parseInt(objFromClient.get("itemPrice" + i).toString()));
+				pstmt.setBoolean(7, (boolean) objFromClient.get("itemReceive" + i));
 
 				pstmt.executeUpdate();
 			} catch (NullPointerException e) {
@@ -614,6 +622,8 @@ public class ServerThread implements Runnable {
 			RMADetailJSON.put("serialNumber" + i, resultSet.getString("SerialNumber"));
 			RMADetailJSON.put("itemDescription" + i, resultSet.getString("itemDescription"));
 			RMADetailJSON.put("itemPrice" + i, resultSet.getString("itemPrice"));
+			RMADetailJSON.put("itemReceive" + i, resultSet.getString("receive"));
+			
 			i++;
 
 		}
