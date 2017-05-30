@@ -153,31 +153,30 @@ public class ServerThread implements Runnable {
 		} else if (action.equals("validate")) {
 
 			JSONObject itemValidateObject;
-			
+
 			itemValidateObject = getItemValidateObject(objFromClient);
-			
+
 			printStream.println(itemValidateObject);
 		}
 	}
 
 	private JSONObject getItemValidateObject(JSONObject objFromClient) throws Exception {
 
-		
 		JSONObject validateResult = new JSONObject();
 		int itemCount = Integer.parseInt(objFromClient.get("itemCount").toString());
 
 		String sql;
 		ResultSet resultSet;
 		int itemNameCount;
-		
+
 		validateResult.put("itemNameValidation", true);
 		validateResult.put("itemSerialValidation", true);
 
 		for (int i = 0; i < itemCount; i++) {
-			
+
 			System.out.println("itemName + i : " + objFromClient.get("itemName" + i));
 
-			//itemName이 list에 존재하는가.. 
+			// itemName이 list에 존재하는가..
 			sql = "SELECT count(*) FROM item WHERE itemName = '" + objFromClient.get("itemName" + i).toString() + "'";
 
 			resultSet = statement.executeQuery(sql);
@@ -195,7 +194,7 @@ public class ServerThread implements Runnable {
 				validateResult.put("itemNameValidation", false);
 				break;
 			}
-			
+
 			sql = "SELECT count(*) FROM rmaitemtable WHERE serialNumber = '"
 					+ objFromClient.get("itemSerialNumber" + i).toString() + "'";
 
@@ -216,7 +215,7 @@ public class ServerThread implements Runnable {
 			}
 
 		}
-		
+
 		return validateResult;
 	}
 
@@ -349,16 +348,14 @@ public class ServerThread implements Runnable {
 		System.out.println("siteCode : " + siteCode);
 		System.out.println("rmaNumber : " + objFromClient.get("rmaNumber").toString());
 
-		
-		//전달되어온 rmaNumber가 현재 rma_table에 존재하는지 확인하는 쿼리.
-		//Query for verify that rmaNumber from the client exist on the server
+		// 전달되어온 rmaNumber가 현재 rma_table에 존재하는지 확인하는 쿼리.
+		// Query for verify that rmaNumber from the client exist on the server
 		ResultSet resultSet = statement.executeQuery(
 				"SELECT * FROM `rma_table` WHERE rmaNumber = '" + objFromClient.get("rmaNumber").toString() + "'");
 
-		
 		if (resultSet.next()) {
 
-			//if exist, Update that query.
+			// if exist, Update that query.
 			String sql = "UPDATE `rma_table` SET rmaDate = '" + objFromClient.get("rmaDate").toString() + "',"
 					+ "rmaOrderNumber = '" + objFromClient.get("rmaOrderNumber").toString() + "'," + "rmaContents = '"
 					+ objFromClient.get("rmaContents").toString() + "'," + "rmaBillTo = '"
@@ -395,7 +392,7 @@ public class ServerThread implements Runnable {
 
 		}
 
-		//item 저장은 분리해둠.
+		// item 저장은 분리해둠.
 		saveRMAItem(objFromClient);
 
 	}
@@ -403,6 +400,10 @@ public class ServerThread implements Runnable {
 	private void saveRMAItem(JSONObject objFromClient) throws Exception {
 
 		System.out.println("saveRMAItem");
+
+		// RMA number & RMA Item Serial 이 중복되는 경우는 Update하도록.
+
+		ResultSet resultSet;
 
 		String sql = "INSERT INTO `RMAitemTable` (`serialNumber`, `rmaIndex`, `rmaNumber`, `itemName`, "
 				+ "`itemDescription`, `itemPrice`, `receive`) VALUES (?,?,?,?,?,?,?)";
@@ -412,30 +413,60 @@ public class ServerThread implements Runnable {
 
 		for (int i = 0; i < Integer.parseInt(objFromClient.get("itemCount").toString()); i++) {
 
-			try {
+			resultSet = statement.executeQuery("SELECT * FROM `RMAitemTable` WHERE rmaNumber = '"
+					+ objFromClient.get("rmaNumber").toString() + "' AND " + "serialNumber = '"
+					+ objFromClient.get("itemSerialNumber" + i).toString() + "'");
 
-				System.out.println(objFromClient.get("itemSerialNumber" + i).toString());
-				System.out.println(objFromClient.get("rmaNumber").toString());
-				System.out.println(objFromClient.get("itemName" + i).toString());
-				System.out.println("item receive : " + objFromClient.get("itemReceive" + i).toString());
+			System.out.println(objFromClient.get("itemSerialNumber" + i).toString());
+			System.out.println(objFromClient.get("rmaNumber").toString());
+			System.out.println(objFromClient.get("itemName" + i).toString());
+			System.out.println("item receive : " + objFromClient.get("itemReceive" + i).toString());
 
-				pstmt.setString(1, objFromClient.get("itemSerialNumber" + i).toString());
-				pstmt.setString(2, (objFromClient.get("rmaNumber").toString()).replace("DA", ""));
-				pstmt.setString(3, (objFromClient.get("rmaNumber").toString()));
-				pstmt.setString(4, objFromClient.get("itemName" + i).toString());
-				pstmt.setString(5, objFromClient.get("itemDescription" + i).toString());
-				pstmt.setInt(6, Integer.parseInt(objFromClient.get("itemPrice" + i).toString()));
-				pstmt.setBoolean(7, (boolean) objFromClient.get("itemReceive" + i));
+			if (resultSet.next()) {
+				// 존재하면 업데이트.
+				
+				int itemReceive = 0;
+				if(objFromClient.get("itemReceive" + i).toString().equals("true")){
+					itemReceive = 1;
+				}
 
-				pstmt.executeUpdate();
-			} catch (NullPointerException e) {
-				// 이건 행에 아이템 없다는 거니까 무시.
-			} catch (MySQLIntegrityConstraintViolationException e) {
-				System.out.println("제약 조건 위반!");
-				e.printStackTrace();
-			} catch (Exception e) {
+				sql = "UPDATE `rmaItemTable` SET serialNumber = '" + objFromClient.get("itemSerialNumber" + i).toString()
+						+ "'," + "rmaIndex = '" + objFromClient.get("rmaNumber").toString().replace("DA", "") + "',"
+						+ "rmaNumber = '" + objFromClient.get("rmaNumber").toString() + "'," + "itemName = '"
+						+ objFromClient.get("itemName" + i).toString() + "'," + "itemDescription = '"
+						+ objFromClient.get("itemDescription" + i).toString() + "'," + "itemPrice = '"
+						+ Integer.parseInt(objFromClient.get("itemPrice" + i).toString()) + "',receive = '"
+						+ itemReceive  + "' " + "WHERE serialNumber= '"
+						+ objFromClient.get("itemSerialNumber" + i).toString() + "' AND rmaNumber = '"
+						+ objFromClient.get("rmaNumber").toString() + "'";
 
-				e.printStackTrace();
+				System.out.println(sql);
+
+				statement.executeUpdate(sql);
+
+			} else {
+
+				// 존재하지않으면 삽입.
+				try {
+					pstmt.setString(1, objFromClient.get("itemSerialNumber" + i).toString());
+					pstmt.setString(2, (objFromClient.get("rmaNumber").toString()).replace("DA", ""));
+					pstmt.setString(3, (objFromClient.get("rmaNumber").toString()));
+					pstmt.setString(4, objFromClient.get("itemName" + i).toString());
+					pstmt.setString(5, objFromClient.get("itemDescription" + i).toString());
+					pstmt.setInt(6, Integer.parseInt(objFromClient.get("itemPrice" + i).toString()));
+					pstmt.setBoolean(7, (boolean) objFromClient.get("itemReceive" + i));
+
+					pstmt.executeUpdate();
+				} catch (NullPointerException e) {
+					// 이건 행에 아이템 없다는 거니까 무시.
+				} catch (MySQLIntegrityConstraintViolationException e) {
+					System.out.println("제약 조건 위반!");
+					e.printStackTrace();
+				} catch (Exception e) {
+
+					e.printStackTrace();
+				}
+
 			}
 
 		}
@@ -623,7 +654,7 @@ public class ServerThread implements Runnable {
 			RMADetailJSON.put("itemDescription" + i, resultSet.getString("itemDescription"));
 			RMADetailJSON.put("itemPrice" + i, resultSet.getString("itemPrice"));
 			RMADetailJSON.put("itemReceive" + i, resultSet.getString("receive"));
-			
+
 			i++;
 
 		}
