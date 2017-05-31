@@ -424,19 +424,20 @@ public class ServerThread implements Runnable {
 
 			if (resultSet.next()) {
 				// 존재하면 업데이트.
-				
+
 				int itemReceive = 0;
-				if(objFromClient.get("itemReceive" + i).toString().equals("true")){
+				if (objFromClient.get("itemReceive" + i).toString().equals("true")) {
 					itemReceive = 1;
 				}
 
-				sql = "UPDATE `rmaItemTable` SET serialNumber = '" + objFromClient.get("itemSerialNumber" + i).toString()
-						+ "'," + "rmaIndex = '" + objFromClient.get("rmaNumber").toString().replace("DA", "") + "',"
-						+ "rmaNumber = '" + objFromClient.get("rmaNumber").toString() + "'," + "itemName = '"
+				sql = "UPDATE `rmaItemTable` SET serialNumber = '"
+						+ objFromClient.get("itemSerialNumber" + i).toString() + "'," + "rmaIndex = '"
+						+ objFromClient.get("rmaNumber").toString().replace("DA", "") + "'," + "rmaNumber = '"
+						+ objFromClient.get("rmaNumber").toString() + "'," + "itemName = '"
 						+ objFromClient.get("itemName" + i).toString() + "'," + "itemDescription = '"
 						+ objFromClient.get("itemDescription" + i).toString() + "'," + "itemPrice = '"
 						+ Integer.parseInt(objFromClient.get("itemPrice" + i).toString()) + "',receive = '"
-						+ itemReceive  + "' " + "WHERE serialNumber= '"
+						+ itemReceive + "' " + "WHERE serialNumber= '"
 						+ objFromClient.get("itemSerialNumber" + i).toString() + "' AND rmaNumber = '"
 						+ objFromClient.get("rmaNumber").toString() + "'";
 
@@ -481,11 +482,12 @@ public class ServerThread implements Runnable {
 				+ "'";
 
 		System.out.println(sql);
-		// statement = mySQLconnection.createStatement();
 
 		ResultSet resultSet = statement.executeQuery(sql);
 
 		while (resultSet.next()) {
+
+			// 각각의 RMA number를 가진 RMA case들의 정보.
 			String rmaNumber = resultSet.getString("rmaNumber");
 			String rmaContents = resultSet.getString("rmaContents");
 			String rmaDate = resultSet.getString("rmaDate");
@@ -494,6 +496,28 @@ public class ServerThread implements Runnable {
 			objToClient.put("RMAnumber", rmaNumber);
 			objToClient.put("RMAcontents", rmaContents);
 			objToClient.put("RMAdate", rmaDate);
+
+			// 하나의 RMA case 안에 있는 여러개의 item을 조회한다.
+			String rmaNumberSql = "select * from rmaItemTable where rmaNumber = '" + resultSet.getString("rmaNumber")
+					+ "'";
+			Statement rmaNumberStatement = mySQLconnection.createStatement();
+			ResultSet rmaNumberResultSet = rmaNumberStatement.executeQuery(rmaNumberSql);
+			
+			System.out.println(rmaNumberSql);
+
+			boolean allItemDelivered = true;
+
+			while (rmaNumberResultSet.next()) {
+
+				String receive = rmaNumberResultSet.getString("receive");
+
+				if (receive != null && receive.equals("0")) {
+					allItemDelivered = false;
+				}
+
+			}
+
+			objToClient.put("RMAdelivered", allItemDelivered);
 
 			printStream.println(objToClient.toJSONString());
 
