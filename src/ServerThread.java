@@ -1,5 +1,9 @@
+import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.net.Socket;
@@ -8,8 +12,6 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
-
-import javax.swing.JOptionPane;
 
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
@@ -161,43 +163,99 @@ public class ServerThread implements Runnable {
 		} else if (action.equals("SignUp")) {
 
 			registerUser(objFromClient);
-		} else if( action.equals("SignIn")){
-			
+		} else if (action.equals("SignIn")) {
+
 			signInUser(objFromClient);
+		} else if (action.equals("attachFile")) {
+
+			saveAttachFile(objFromClient);
 		}
 	}
-	
-	private void signInUser(JSONObject userInfoObj){
-		String stringID = userInfoObj.get("stringID").toString();
 
-		String passWord = userInfoObj.get("passWord").toString();
+	private void saveAttachFile(JSONObject attachFileObj) {
 		
-		String sql = "SELECT id FROM `user_ID_Table` where id = '" + stringID + "' AND passWord = '" + passWord + "'";
+		String rmaNumber = attachFileObj.get("rmaNumber").toString();
+
+		String attachFileName = attachFileObj.get("attachFileName").toString();
 		
-		System.out.println(sql);
-		
-		JSONObject resultObj = new JSONObject();
-		
-		try{
-			ResultSet resultSet = statement.executeQuery(sql);
-			
-			if(resultSet.next()){
-				
-				resultObj.put("result", "SUCESS");
-				resultObj.put("signInID", resultSet.getString("id"));
-				
-				
-			}else{
-				resultObj.put("result", "FIAL");
+		File fileDir = new File("AttachFile");
+
+		if (!fileDir.exists()) {
+			try {
+				fileDir.mkdirs();
+			} catch (Exception e) {
+				e.printStackTrace();
 			}
-			
-			printStream.println(resultObj);
-			
-		}catch(Exception e){
+		}
+
+		try {
+
+			byte[] contents = new byte[10000];
+
+			// Initialize the FileOutputStream to the output file's full path.
+			FileOutputStream fileOutputStream = new FileOutputStream(
+					fileDir + "/" + rmaNumber + attachFileName);
+			BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(fileOutputStream);
+			InputStream inputStream = clientSocket.getInputStream();
+
+			// No of bytes read in one read() call
+			int bytesRead = 0;
+
+			while ((bytesRead = inputStream.read(contents)) != -1)
+				bufferedOutputStream.write(contents, 0, bytesRead);
+
+			bufferedOutputStream.flush();
+
+		} catch (Exception e) {
 			e.printStackTrace();
 		}
 		
 		
+		String sql = "INSERT INTO `attached_file_info` (rmaNumber, fileName) VALUES (?,?)";
+		
+		System.out.println(sql);
+		
+		try {
+
+			pstmt = mySQLconnection.prepareStatement(sql);
+			pstmt.setString(1, rmaNumber);
+			pstmt.setString(2, attachFileName);
+			pstmt.executeUpdate();
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+
+	}
+
+	private void signInUser(JSONObject userInfoObj) {
+		String stringID = userInfoObj.get("stringID").toString();
+
+		String passWord = userInfoObj.get("passWord").toString();
+
+		String sql = "SELECT id FROM `user_ID_Table` where id = '" + stringID + "' AND passWord = '" + passWord + "'";
+
+		System.out.println(sql);
+
+		JSONObject resultObj = new JSONObject();
+
+		try {
+			ResultSet resultSet = statement.executeQuery(sql);
+
+			if (resultSet.next()) {
+
+				resultObj.put("result", "SUCESS");
+				resultObj.put("signInID", resultSet.getString("id"));
+
+			} else {
+				resultObj.put("result", "FIAL");
+			}
+
+			printStream.println(resultObj);
+
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+
 	}
 
 	private boolean checkIDvalid(String stringID) {
@@ -225,8 +283,8 @@ public class ServerThread implements Runnable {
 
 		String passWord = userInfoObj.get("passWord").toString();
 
-		JSONObject resultObj = new JSONObject(); 
-		
+		JSONObject resultObj = new JSONObject();
+
 		if (checkIDvalid(stringID)) {
 			// 암호화는 나중에 추가하던가 말던가.
 			// byte[] utf8 = passWord.getBytes("UTF-8");
@@ -246,13 +304,13 @@ public class ServerThread implements Runnable {
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
-			
+
 			resultObj.put("result", "OK");
-		}else{
+		} else {
 			resultObj.put("result", "FAIL");
-			
+
 		}
-		
+
 		printStream.println(resultObj);
 
 	}
