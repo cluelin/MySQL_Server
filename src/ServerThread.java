@@ -172,12 +172,41 @@ public class ServerThread implements Runnable {
 		}
 	}
 
+	private int getAttachFileCount(String rmaNumber, JSONObject toClientObj) {
+
+		String sql = "SELECT count(*), fileName FROM `attached_file_info` where rmaNumber = '" + rmaNumber + "'";
+
+		System.out.println(sql);
+
+		int countOfAttachment = 0;
+		try {
+
+			ResultSet resultSet = statement.executeQuery(sql);
+
+			int i = 0;
+
+			while (resultSet.next()) {
+
+				countOfAttachment = resultSet.getInt("count(*)");
+
+				toClientObj.put("fileName" + i, resultSet.getString("fileName"));
+				toClientObj.put("countOfAttachment", countOfAttachment);
+				i++;
+			}
+
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+
+		return countOfAttachment;
+	}
+
 	private void saveAttachFile(JSONObject attachFileObj) {
-		
+
 		String rmaNumber = attachFileObj.get("rmaNumber").toString();
 
 		String attachFileName = attachFileObj.get("attachFileName").toString();
-		
+
 		File fileDir = new File("AttachFile");
 
 		if (!fileDir.exists()) {
@@ -193,8 +222,7 @@ public class ServerThread implements Runnable {
 			byte[] contents = new byte[10000];
 
 			// Initialize the FileOutputStream to the output file's full path.
-			FileOutputStream fileOutputStream = new FileOutputStream(
-					fileDir + "/" + rmaNumber + attachFileName);
+			FileOutputStream fileOutputStream = new FileOutputStream(fileDir + "/" + rmaNumber + attachFileName);
 			BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(fileOutputStream);
 			InputStream inputStream = clientSocket.getInputStream();
 
@@ -205,16 +233,17 @@ public class ServerThread implements Runnable {
 				bufferedOutputStream.write(contents, 0, bytesRead);
 
 			bufferedOutputStream.flush();
+			
+			System.out.println("파일 저장완료");
 
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
-		
-		
+
 		String sql = "INSERT INTO `attached_file_info` (rmaNumber, fileName) VALUES (?,?)";
-		
+
 		System.out.println(sql);
-		
+
 		try {
 
 			pstmt = mySQLconnection.prepareStatement(sql);
@@ -848,6 +877,8 @@ public class ServerThread implements Runnable {
 			RMADetailJSON.put("siteName", resultSet.getString("siteName"));
 
 		}
+
+		getAttachFileCount(rmaNumber, RMADetailJSON);
 
 		printStream.println(RMADetailJSON.toJSONString());
 
