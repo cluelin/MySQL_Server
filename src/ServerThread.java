@@ -2,11 +2,17 @@ import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.DataInputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.PrintStream;
+import java.net.ServerSocket;
 import java.net.Socket;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -21,10 +27,15 @@ import com.mysql.jdbc.exceptions.jdbc4.MySQLIntegrityConstraintViolationExceptio
 
 public class ServerThread implements Runnable {
 
+	final int DATA_PASS_SOCK = 6000;
+	final String ATTACHED_FILE_DIR = "AttachFile";
+
 	// input/output information
 	private BufferedReader bufferedReader;
 	private BufferedWriter bufferedWriter;
 	private PrintStream printStream;
+
+	InputStream inputStream;
 
 	// JSON
 	private JSONParser jsonParser = new JSONParser();
@@ -60,11 +71,14 @@ public class ServerThread implements Runnable {
 			System.out.println("MySQL : Connected");
 
 			// Reader and Print setting
-			bufferedReader = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+			inputStream = clientSocket.getInputStream();
+			bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
 			printStream = new PrintStream(clientSocket.getOutputStream());
 
 			while (true) {
 				String input = bufferedReader.readLine();
+
+				System.out.println("Thread ID : " + this + "    input : " + input);
 
 				if (input != null) {
 					// 정해진 action 수행.
@@ -170,7 +184,70 @@ public class ServerThread implements Runnable {
 		} else if (action.equals("saveAttachFileInfo")) {
 
 			saveAttachFileInfo(objFromClient);
+		} else if (action.equals("getAttachFileInfo")) {
+
+			sendAttachFile(objFromClient);
 		}
+	}
+
+	private void sendAttachFile(JSONObject attachFIleObj) {
+
+		String fileName = attachFIleObj.get("fileName").toString();
+
+		System.out.println("file name : " + fileName);
+
+		File file = new File(ATTACHED_FILE_DIR + "//" + fileName);
+		try {
+
+			ServerSocket serverSock = new ServerSocket(DATA_PASS_SOCK);
+
+			Socket dataPassSock = serverSock.accept();
+
+			FileInputStream fileInputStream = new FileInputStream(file);
+			BufferedInputStream bufferedInputStream = new BufferedInputStream(fileInputStream);
+
+			OutputStream outputStream = dataPassSock.getOutputStream();
+			BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(outputStream);
+
+			byte[] contents;
+			long fileSize = file.length();
+			long current = 0;
+
+			while (current != fileSize) {
+				int size = 1000;
+
+				if (fileSize - current >= size) {
+					current += size;
+				} else {
+					size = (int) (fileSize - current);
+					current = fileSize;
+				}
+
+				contents = new byte[size];
+				bufferedInputStream.read(contents, 0, size);
+				bufferedOutputStream.write(contents);
+
+				System.out.print("Sending file ... " + (current * 100) / fileSize + "% complete!");
+
+			}
+
+			bufferedOutputStream.flush();
+			bufferedOutputStream.close();
+			outputStream.close();
+
+			fileInputStream.close();
+			bufferedInputStream.close();
+
+			dataPassSock.close();
+			serverSock.close();
+
+		} catch (FileNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+
 	}
 
 	private int getAttachFileCount(String rmaNumber, JSONObject toClientObj) {
@@ -206,6 +283,7 @@ public class ServerThread implements Runnable {
 		return countOfAttachment;
 	}
 
+	// 문제지점.
 	private void saveAttachFileInfo(JSONObject attachFileObj) {
 
 		String rmaNumber = attachFileObj.get("rmaNumber").toString();
@@ -216,7 +294,7 @@ public class ServerThread implements Runnable {
 
 		System.out.println(sql);
 
-		File fileDir = new File("AttachFile");
+		File fileDir = new File(ATTACHED_FILE_DIR);
 
 		if (!fileDir.exists()) {
 			try {
@@ -228,26 +306,35 @@ public class ServerThread implements Runnable {
 
 		try {
 
-			byte[] contents = new byte[10000];
+			ServerSocket serversock = new ServerSocket(DATA_PASS_SOCK);
+			Socket dataPassSock = serversock.accept();
 
 			// Initialize the FileOutputStream to the output file's full path.
-			FileOutputStream fileOutputStream = new FileOutputStream(fileDir + "/" + rmaNumber + attachFileName);
+			FileOutputStream fileOutputStream = new FileOutputStream(fileDir + "\\" + rmaNumber + attachFileName);
 			BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(fileOutputStream);
+			InputStream dataPassInputStream = dataPassSock.getInputStream();
+			DataInputStream dataInputStream = new DataInputStream(dataPassInputStream);
 
-			InputStream inputStream = clientSocket.getInputStream();
-			BufferedInputStream bufferedInputStream = new BufferedInputStream(inputStream);
-
+			byte[] contents = new byte[10000];
 			// No of bytes read in one read() call
 			int bytesRead = 0;
+			int totalSize = 0;
 
-			while ((bytesRead = inputStream.read(contents)) != -1)
+			while ((bytesRead = dataInputStream.read(contents)) != -1) {
 				bufferedOutputStream.write(contents, 0, bytesRead);
+				totalSize += bytesRead;
+				System.out.println("bytesRead : " + bytesRead);
+			}
+
+			System.out.println("totalSize : " + totalSize);
 
 			bufferedOutputStream.flush();
-			bufferedInputStream.close();
-			fileOutputStream.close();
+			bufferedOutputStream.close();
 
-			System.out.println("파일 저장완료");
+			dataInputStream.close();
+
+			dataPassSock.close();
+			serversock.close();
 
 		} catch (Exception e) {
 			e.printStackTrace();
@@ -255,6 +342,7 @@ public class ServerThread implements Runnable {
 
 		try {
 
+			System.out.println("첨부파일 디비 저장 시작. ");
 			pstmt = mySQLconnection.prepareStatement(sql);
 			pstmt.setString(1, rmaNumber);
 			pstmt.setString(2, attachFileName);
@@ -714,7 +802,6 @@ public class ServerThread implements Runnable {
 
 			printStream.println(objToClient.toJSONString());
 
-			System.out.println("rmaNumber : " + rmaNumber + " rmaContents : " + rmaContents);
 		}
 
 		printStream.println("end");
