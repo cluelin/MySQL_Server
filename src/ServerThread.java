@@ -12,6 +12,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.lang.reflect.Executable;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.sql.Connection;
@@ -642,8 +643,9 @@ public class ServerThread implements Runnable {
 					+ objFromClient.get("rmaContents").toString() + "'," + "rmaBillTo = '"
 					+ objFromClient.get("rmaBillTo").toString() + "'," + "rmaShipTo = '"
 					+ objFromClient.get("rmaShipTo").toString() + "'," + "rmaTrackingNumber = '"
-					+ objFromClient.get("rmaTrackingNumber").toString() + "',siteCode = '" + siteCode + "' "
-					+ "WHERE rmaNumber= '" + objFromClient.get("rmaNumber").toString() + "'";
+					+ objFromClient.get("rmaTrackingNumber").toString() + "',siteCode = '" + siteCode
+					+ "', user_info = '" + objFromClient.get("USER_ID").toString() + "'" + "WHERE rmaNumber= '"
+					+ objFromClient.get("rmaNumber").toString() + "'";
 
 			System.out.println(sql);
 
@@ -654,7 +656,7 @@ public class ServerThread implements Runnable {
 			// if doesn't exist, Insert information
 			String sql = "INSERT INTO `rma_table` (rmaIndex, rmaNumber, rmaDate, rmaOrderNumber, "
 					+ "rmaContents, rmaBillTo, rmaShipTo, rmaTrackingNumber, "
-					+ "rmaCompanyName, siteCode) VALUES (?,?,?,?,?,?,?,?,?,?)";
+					+ "rmaCompanyName, siteCode, user_info) VALUES (?,?,?,?,?,?,?,?,?,?,?)";
 
 			pstmt = mySQLconnection.prepareStatement(sql);
 
@@ -668,6 +670,7 @@ public class ServerThread implements Runnable {
 			pstmt.setString(8, objFromClient.get("rmaTrackingNumber").toString());
 			pstmt.setString(9, objFromClient.get("companyName").toString());
 			pstmt.setInt(10, siteCode);
+			pstmt.setString(11, objFromClient.get("USER_ID").toString());
 
 			pstmt.executeUpdate();
 
@@ -759,8 +762,30 @@ public class ServerThread implements Runnable {
 
 		System.out.println("searchRealatedRMAnumber");
 
-		String sql = "select * from rma_table where rmaCompanyName = '" + objFromClient.get("companyName").toString()
-				+ "'";
+		String sql = null;
+
+		String siteName = objFromClient.get("siteName").toString();
+		String companyName = objFromClient.get("companyName").toString();
+		int siteCode = -1;
+
+		if (siteName.equals("")) {
+
+			sql = "select * from rma_table where rmaCompanyName = '" + companyName + "'";
+
+		} else {
+
+			sql = "select siteCode from site where siteName = '" + siteName + "' AND companyName = '" + companyName
+					+ "'";
+
+			ResultSet resultSet = statement.executeQuery(sql);
+
+			while (resultSet.next()) {
+				siteCode = resultSet.getInt("siteCode");
+			}
+
+			sql = "select * from rma_table where rmaCompanyName = '" + companyName + "' AND siteCode = '" + siteCode
+					+ "'";
+		}
 
 		System.out.println(sql);
 
@@ -772,6 +797,7 @@ public class ServerThread implements Runnable {
 			String rmaNumber = resultSet.getString("rmaNumber");
 			String rmaContents = resultSet.getString("rmaContents");
 			String rmaDate = resultSet.getString("rmaDate");
+			String rmaSiteCode = resultSet.getString("siteCode");
 
 			JSONObject objToClient = new JSONObject();
 			objToClient.put("RMAnumber", rmaNumber);
@@ -856,26 +882,51 @@ public class ServerThread implements Runnable {
 
 	private void getItemNameFromDatabase(String prefix) throws Exception {
 
-		String sql = "SELECT * FROM item WHERE itemName LIKE '" + prefix + "%'";
+		String sql;
+		ResultSet resultSet;
+
+		sql = "SELECT count(*) FROM item WHERE itemName = '" + prefix + "'";
+
+		resultSet = statement.executeQuery(sql);
+		int itemCount = 0;
+		boolean coinside = false;
+
+		while (resultSet.next()) {
+
+			itemCount = resultSet.getInt("count(*)");
+
+			if (itemCount == 1) {
+				coinside = true;
+			}
+
+		}
+
+		sql = "SELECT * FROM item WHERE itemName LIKE '%" + prefix + "%'";
 
 		System.out.println(sql);
 
-		ResultSet resultSet = statement.executeQuery(sql);
+		resultSet = statement.executeQuery(sql);
 
 		while (resultSet.next()) {
 
 			// Integer itemCode = resultSet.getInt("itemCode");
 			String itemName = resultSet.getString("itemName");
-			String itemDescription = resultSet.getString("itemDescription");
-			Integer itemPrice = resultSet.getInt("itemPrice");
-
-			System.out.println(itemName + itemDescription);
 
 			JSONObject itemNameJSON = new JSONObject();
 			// itemNameJSON.put("itemCode", itemCode);
 			itemNameJSON.put("itemName", itemName);
-			itemNameJSON.put("itemDescription", itemDescription);
-			itemNameJSON.put("itemPrice", itemPrice);
+
+			if (coinside) {
+				String itemDescription = resultSet.getString("itemDescription");
+				Integer itemPrice = resultSet.getInt("itemPrice");
+
+				itemNameJSON.put("itemDescription", itemDescription);
+				itemNameJSON.put("itemPrice", itemPrice);
+				itemNameJSON.put("coinside", true);
+
+			} else {
+				itemNameJSON.put("coinside", false);
+			}
 
 			printStream.println(itemNameJSON.toJSONString());
 		}
