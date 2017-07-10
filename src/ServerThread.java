@@ -12,11 +12,9 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintStream;
-import java.lang.reflect.Executable;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -49,9 +47,10 @@ public class ServerThread implements Runnable {
 
 	private Socket clientSocket;
 
-	public ServerThread(Socket clientSocket) {
+	public ServerThread(Socket clientSocket, Connection SQLConnection) {
 
 		this.clientSocket = clientSocket;
+		mySQLconnection = SQLConnection;
 
 	}
 
@@ -60,16 +59,7 @@ public class ServerThread implements Runnable {
 
 		try {
 
-			// 이건 뭔지 모르겠음.
-			Class.forName(ServerInformation.JDBC_DRIVER);
-
-			// mySQL과 접속.
-			mySQLconnection = DriverManager.getConnection(ServerInformation.DB_URL, ServerInformation.USERNAME,
-					ServerInformation.PASSWORD);
-
 			statement = mySQLconnection.createStatement();
-
-			System.out.println("MySQL : Connected");
 
 			// Reader and Print setting
 			inputStream = clientSocket.getInputStream();
@@ -100,8 +90,7 @@ public class ServerThread implements Runnable {
 			try {
 				// 연결 정상 종료.
 				System.out.println("Server : connection close");
-				System.out.println("MySQL Server : connection close");
-				mySQLconnection.close();
+				
 				clientSocket.close();
 			} catch (Exception e) {
 
